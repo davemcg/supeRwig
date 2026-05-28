@@ -64,22 +64,9 @@ build_main_plot <- function(plot_data, exon_highlights,
     ggforce::facet_col(ggplot2::vars(combined_facet),
                        scales = "free_y", space = "free", shrink = TRUE)
   
-  # Wiggle color scale (or no-legend default) -- applied BEFORE the
-  # junction layer so new_scale_color can introduce a second one.
-  if (!is.null(color_var)) {
-    p <- p +
-      ggplot2::scale_color_manual(values = lc$colors, name = color_var) +
-      ggplot2::theme(
-        legend.position = "bottom",
-        legend.title    = ggplot2::element_text(size = 9),
-        legend.text     = ggplot2::element_text(size = 8),
-        legend.key.size = ggplot2::unit(0.4, "cm")
-      )
-  } else {
-    p <- p +
-      ggplot2::scale_color_manual(values = lc$colors, guide = "none") +
-      ggplot2::theme(legend.position = "none")
-  }
+  # Wiggle color scale -- colors are applied but the legend is always
+  # suppressed (color_var still drives the line colors)
+  p <- p + ggplot2::scale_color_manual(values = lc$colors, guide = "none")
   
   # ---- Optional junction layer ---------------------------------------------
   # Open a fresh color scale via ggnewscale so the junction
