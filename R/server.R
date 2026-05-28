@@ -194,9 +194,25 @@ build_plot_reactive <- function(input, ctx, rv, bed_data) {
       input$summary_type, ctx$bp_backend
     )
     
-    # ---- Plot data assembly
+    # ---- Junction track? Reserve a thin per-sample band so junctions
+    # don't bleed into the previous sample's wiggle.
+    show_junctions <- !is.null(ctx$sj_se) && isTRUE(input$show_junctions)
+    junc_band <- if (show_junctions) 0.4 else 0
+    
+    # ---- Plot data assembly (junc_band shifts the wiggle baseline up)
     pd_bits <- build_plot_data(dt_full, meta_cur, input$facet_group,
-                               input$overlap_factor, input$summary_type)
+                               input$overlap_factor, input$summary_type,
+                               junc_band = junc_band)
+    
+    junctions <- if (show_junctions) {
+      raw <- read_region_junctions(
+        ctx, t_chr, t_start, t_end,
+        samples        = target_samples,
+        min_reads      = as.integer(input$min_junc_reads)
+      )
+      attach_junction_positions(raw, pd_bits$unique_samples,
+                                junc_band = junc_band)
+    } else NULL
     
     color_var <- if (isTRUE(nzchar(input$color_by))) input$color_by else NULL
     
@@ -204,6 +220,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data) {
     main_plot <- build_main_plot(
       pd_bits$plot_data,
       exon_highlights = anno_bits$exon_highlights,
+      junctions       = junctions,
       bed_highlights  = bed_in_region,
       bed_color       = input$bed_color,
       chr             = t_chr,
@@ -224,7 +241,8 @@ build_plot_reactive <- function(input, ctx, rv, bed_data) {
       n_facets  = length(unique(pd_bits$unique_samples$combined_facet)),
       n_tx      = mm$num_tx,
       has_color = !is.null(color_var),
-      minimap_override = input$minimap_height
+      minimap_override = input$minimap_height,
+      show_junctions   = show_junctions
     )
     
     list(

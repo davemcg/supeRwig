@@ -7,6 +7,7 @@
 build_main_plot(
   plot_data,
   exon_highlights,
+  junctions = NULL,
   bed_highlights = data.table::data.table(start = numeric(0), end = numeric(0)),
   bed_color = "#B22222",
   chr,
@@ -21,6 +22,9 @@ build_main_plot(
 \item{plot_data}{Per-bin coverage with offsets and tooltips.}
 
 \item{exon_highlights}{Reduced exon ranges to shade behind the traces.}
+
+\item{junctions}{Optional data.table with columns \verb{sample, start, end, strand, annot, count, strand_annot, junc_y, junc_lw, junc_tooltip, jid} as produced by \code{attach_junction_positions}.
+NULL or zero-row = no junction layer drawn.}
 
 \item{bed_highlights}{Optional user-uploaded BED ranges (subset to
 the current window). Empty data.table = no

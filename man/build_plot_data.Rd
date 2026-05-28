@@ -4,7 +4,14 @@
 \alias{build_plot_data}
 \title{Join coverage with metadata, compute per-sample y-offsets and tooltips}
 \usage{
-build_plot_data(dt_full, meta_cur, facet_cols, overlap_factor, summary_type)
+build_plot_data(
+  dt_full,
+  meta_cur,
+  facet_cols,
+  overlap_factor,
+  summary_type,
+  junc_band = 0
+)
 }
 \description{
 Join coverage with metadata, compute per-sample y-offsets and tooltips

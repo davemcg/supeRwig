@@ -4,7 +4,14 @@
 \alias{compute_plot_dimensions}
 \title{Compute pixel heights for the main plot and minimap}
 \usage{
-compute_plot_dimensions(n_samples, n_facets, n_tx, has_color, minimap_override)
+compute_plot_dimensions(
+  n_samples,
+  n_facets,
+  n_tx,
+  has_color,
+  minimap_override,
+  show_junctions = FALSE
+)
 }
 \description{
 Compute pixel heights for the main plot and minimap

@@ -3,7 +3,7 @@
 #' @keywords internal
 build_ui <- function(ctx) {
   bslib::page_navbar(
-    title   = "superwig",
+    title   = "supeRwig",
     theme   = bslib::bs_theme(version = 5, primary = "#3A5836"),
     sidebar = build_sidebar(ctx),
     bslib::nav_panel("Plot Viewer", build_plot_viewer_panel())
@@ -13,6 +13,24 @@ build_ui <- function(ctx) {
 #' @keywords internal
 build_sidebar <- function(ctx) {
   meta_cols <- colnames(ctx$eiad_meta)
+  
+  # Junction panel only appears when a junction SE was supplied.
+  junction_panel <- if (!is.null(ctx$sj_se)) {
+    bslib::accordion_panel(
+      "Junction Track",
+      shiny::checkboxInput("show_junctions",
+                           "Show per-sample junction track",
+                           value = FALSE),
+      shiny::numericInput("min_junc_reads",
+                          "Min reads per junction:",
+                          value = 5, min = 5, step = 1),
+      shiny::helpText(
+        "Junctions appear as straight horizontal lines in a narrow ",
+        "band just below each wiggle."
+      )
+    )
+  } else NULL
+  
   bslib::sidebar(
     width = 350,
     shiny::h4("Target & Parameters"),
@@ -41,55 +59,59 @@ build_sidebar <- function(ctx) {
       else "",
       multiple = FALSE
     ),
-    bslib::accordion(
-      open = "Plot Settings",
-      bslib::accordion_panel(
-        "Data Filters",
-        shiny::selectizeInput("groupings", "Metadata to Filter By:",
-                              choices = meta_cols, multiple = TRUE),
-        shiny::uiOutput("dynamic_group_filters_ui"),
-        shiny::hr(),
-        shiny::numericInput("max_samples",
-                            "Max Samples per Study (0 = All):",
-                            value = 4, min = 0)
-      ),
-      bslib::accordion_panel(
-        "Plot Settings",
-        shiny::numericInput("min_expr", "Min log2(CPM+1) for gene:",
-                            value = 5, min = 0, step = 0.5),
-        shiny::numericInput("bin_size",
-                            "Bin Size (base pairs) [0 = Auto]:",
-                            value = 0, min = 0),
-        shiny::numericInput("overlap_factor", "Overlap Factor:",
-                            value = 1.2, step = 0.1),
-        shiny::numericInput("plot_height",
-                            "Plot Height (pixels) [0 = Auto]:",
-                            value = 0, min = 0),
-        shiny::numericInput("minimap_height",
-                            "Minimap Height (pixels) [0 = Auto]:",
-                            value = 0, min = 0),
-        shiny::selectInput("summary_type", "Bin Summary:",
-                           choices  = c("max", "mean", "min", "sd"),
-                           selected = "max")
-      ),
-      bslib::accordion_panel(
-        "BED Highlights",
-        shiny::fileInput(
-          "bed_file", "Upload BED file:",
-          accept = c(".bed", ".bed.gz", ".txt", ".tsv")
+    do.call(bslib::accordion, c(
+      list(open = "Plot Settings"),
+      list(
+        bslib::accordion_panel(
+          "Data Filters",
+          shiny::selectizeInput("groupings", "Metadata to Filter By:",
+                                choices = meta_cols, multiple = TRUE),
+          shiny::uiOutput("dynamic_group_filters_ui"),
+          shiny::hr(),
+          shiny::numericInput("max_samples",
+                              "Max Samples per Study (0 = All):",
+                              value = 4, min = 0)
         ),
-        colourpicker::colourInput(
-          "bed_color", "Highlight color:",
-          value = "#B22222", showColour = "background"
+        bslib::accordion_panel(
+          "Plot Settings",
+          shiny::numericInput("min_expr", "Min log2(CPM+1) for gene:",
+                              value = 5, min = 0, step = 0.5),
+          shiny::numericInput("bin_size",
+                              "Bin Size (base pairs) [0 = Auto]:",
+                              value = 0, min = 0),
+          shiny::numericInput("overlap_factor", "Overlap Factor:",
+                              value = 1.2, step = 0.1),
+          shiny::numericInput("plot_height",
+                              "Plot Height (pixels) [0 = Auto]:",
+                              value = 0, min = 0),
+          shiny::numericInput("minimap_height",
+                              "Minimap Height (pixels) [0 = Auto]:",
+                              value = 0, min = 0),
+          shiny::selectInput("summary_type", "Bin Summary:",
+                             choices  = c("max", "mean", "min", "sd"),
+                             selected = "max")
         ),
-        shiny::helpText(
-          "Regions in the uploaded BED that overlap the current ",
-          "window are drawn as vertical bands behind the wiggle ",
-          "traces. New uploads refresh automatically; color and ",
-          "opacity apply on next plot generation."
+        bslib::accordion_panel(
+          "BED Highlights",
+          shiny::fileInput(
+            "bed_file", "Upload BED file:",
+            accept = c(".bed", ".bed.gz", ".txt", ".tsv")
+          ),
+          colourpicker::colourInput(
+            "bed_color", "Highlight color:",
+            value = "#B22222", showColour = "background"
+          ),
+          shiny::helpText(
+            "Regions in the uploaded BED that overlap the current ",
+            "window are drawn as vertical bands behind the wiggle ",
+            "traces. New uploads refresh automatically; color and ",
+            "opacity apply on next plot generation."
+          )
         )
-      )
-    ),
+      ),
+      # junction_panel goes last and only when present
+      if (!is.null(junction_panel)) list(junction_panel) else list()
+    )),
     shiny::actionButton("plot_btn", "Generate Plot",
                         class = "btn-primary w-100")
   )

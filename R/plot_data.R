@@ -34,7 +34,7 @@ subset_region_annotation <- function(anno_dt, chr, w_start, w_end) {
 #'
 #' @keywords internal
 build_plot_data <- function(dt_full, meta_cur, facet_cols, overlap_factor,
-                            summary_type) {
+                            summary_type, junc_band = 0) {
   if (is.null(facet_cols) || length(facet_cols) == 0) {
     meta_cur$dummy_facet <- "All Samples"
     facet_cols <- "dummy_facet"
@@ -71,7 +71,10 @@ build_plot_data <- function(dt_full, meta_cur, facet_cols, overlap_factor,
   max_log <- max(pd$log_val, na.rm = TRUE)
   if (max_log == 0 || is.na(max_log)) max_log <- 1
   
-  pd[, offset_y := (log_val / max_log) * overlap_factor + local_idx]
+  # Shift wiggle baseline up by junc_band so the strip [local_idx,
+  # local_idx + junc_band] is reserved for the junction layer.
+  pd[, offset_y := (log_val / max_log) * overlap_factor +
+       local_idx + junc_band]
   pd[, plot_x   := (binned_pos + bin_end) / 2]
   data.table::setorderv(pd, c("combined_facet", "local_idx", "plot_x"))
   pd[, tooltip_text := paste0(static_tooltip,

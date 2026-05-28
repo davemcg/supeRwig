@@ -78,9 +78,14 @@ empty_minimap <- function(w_start, w_end) {
 #'
 #' @keywords internal
 compute_plot_dimensions <- function(n_samples, n_facets, n_tx,
-                                    has_color, minimap_override) {
-  legend_px <- if (has_color) 60 else 0
-  main_px <- (n_samples * 15) + (n_facets * 35) + 100 + legend_px
+                                    has_color, minimap_override,
+                                    show_junctions = FALSE) {
+  legend_px  <- if (has_color)      60 else 0
+  # Junctions live inside the per-sample band; this small bump is just
+  # enough to keep them legible when many samples stack up.
+  junc_px    <- if (show_junctions) n_samples * 20 else 0
+  main_px    <- (n_samples * 15) + (n_facets * 35) + 100 +
+    legend_px + junc_px
   
   minimap_px <- if (!is.na(minimap_override) && minimap_override > 0) {
     as.integer(minimap_override)

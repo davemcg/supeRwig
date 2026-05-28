@@ -5,21 +5,19 @@
 #'
 #' @keywords internal
 build_context <- function(se_dir, bigwig_base, anno_fst, bigwig_ext,
-                          n_workers) {
+                          n_workers, sj_se_dir = NULL) {
   bp_backend <- register_bp_backend(n_workers)
   se_bits    <- load_se(se_dir)
   anno_bits  <- load_annotation(anno_fst)
-  # Build BigWig URLs/paths from the SE's sample_accession column.
-  # Must run AFTER load_se because we need se_bits$eiad_meta.
+  sj_bits    <- load_junction_se(sj_se_dir)
   bw_map     <- build_bigwig_map(se_bits$eiad_meta$sample_accession,
                                  bigwig_base, bigwig_ext)
   
-  c(se_bits, anno_bits, list(
+  c(se_bits, anno_bits, sj_bits, list(
     bw_file_map = bw_map,
     bp_backend  = bp_backend
   ))
 }
-
 #' @keywords internal
 register_bp_backend <- function(n_workers) {
   bp <- if (.Platform$OS.type == "windows") {
@@ -67,6 +65,54 @@ load_se <- function(se_dir) {
     gene_to_se_row    = gene_to_se_row,
     eiad_meta         = eiad_meta,
     se_col_for_sample = se_col_for_sample
+  )
+}
+
+
+#' Load junction-level HDF5SummarizedExperiment
+#'
+#' rowData is pulled into memory once (small relative to the assay) and
+#' keyed by (chr, start, end) so per-region lookups are fast. The HDF5
+#' assay is left out-of-memory and read lazily per region.
+#'
+#' Returns a list of NULL components when sj_se_dir is NULL, so the
+#' rest of the app can use a uniform `ctx$sj_se` check.
+#'
+#' @keywords internal
+load_junction_se <- function(sj_se_dir) {
+  if (is.null(sj_se_dir)) {
+    return(list(
+      sj_se             = NULL,
+      sj_row_meta       = NULL,
+      sj_col_for_sample = NULL
+    ))
+  }
+  cat("Loading junction HDF5SummarizedExperiment from ", sj_se_dir, "...\n")
+  sj_se <- HDF5Array::loadHDF5SummarizedExperiment(dir = sj_se_dir)
+  cat(sprintf("  %d junctions x %d samples\n", nrow(sj_se), ncol(sj_se)))
+  
+  rd_names <- colnames(SummarizedExperiment::rowData(sj_se))
+  required <- c("chr", "start", "end", "strand", "annot")
+  missing  <- setdiff(required, rd_names)
+  if (length(missing) > 0)
+    stop("Junction SE rowData missing columns: ",
+         paste(missing, collapse = ", "))
+  if (!"counts" %in% SummarizedExperiment::assayNames(sj_se))
+    stop("Junction SE has no 'counts' assay. Available: ",
+         paste(SummarizedExperiment::assayNames(sj_se), collapse = ", "))
+  
+  rd <- as.data.frame(SummarizedExperiment::rowData(sj_se))
+  rd$row_idx <- seq_len(nrow(rd))
+  if (!"jid" %in% colnames(rd)) rd$jid <- rownames(rd)
+  data.table::setDT(rd)
+  data.table::setkey(rd, chr, start, end)
+  
+  sj_col_for_sample <- setNames(seq_len(ncol(sj_se)), colnames(sj_se))
+  
+  list(
+    sj_se             = sj_se,
+    sj_row_meta       = rd,
+    sj_col_for_sample = sj_col_for_sample
   )
 }
 

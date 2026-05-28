@@ -4,7 +4,14 @@
 \alias{build_context}
 \title{Assemble the app context (loaded data + worker pool)}
 \usage{
-build_context(se_dir, bigwig_base, anno_fst, bigwig_ext, n_workers)
+build_context(
+  se_dir,
+  bigwig_base,
+  anno_fst,
+  bigwig_ext,
+  n_workers,
+  sj_se_dir = NULL
+)
 }
 \description{
 Bundles everything the UI and server need so we can pass a single

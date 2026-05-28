@@ -6,8 +6,13 @@
 #'                         the current window). Empty data.table = no
 #'                         BED layer drawn.
 #' @param bed_color  Fill color and opacity for BED bands.
+#' @param junctions Optional data.table with columns `sample, start,
+#'   end, strand, annot, count, strand_annot, junc_y, junc_lw,
+#'   junc_tooltip, jid` as produced by `attach_junction_positions`.
+#'   NULL or zero-row = no junction layer drawn.
 #' @keywords internal
 build_main_plot <- function(plot_data, exon_highlights,
+                            junctions = NULL,
                             bed_highlights = data.table::data.table(
                               start = numeric(0), end = numeric(0)
                             ),
@@ -24,9 +29,6 @@ build_main_plot <- function(plot_data, exon_highlights,
                    ymin = -Inf, ymax = Inf),
       inherit.aes = FALSE, fill = "grey85", alpha = 0.5
     ) +
-    # User BED layer -- interactive so hovering a band shows its
-    # coordinates / name / score. Empty bed_highlights yields zero
-    # geoms, so this is free when nothing is uploaded.
     ggiraph::geom_rect_interactive(
       data = bed_highlights,
       ggplot2::aes(xmin = start - 0.5, xmax = end + 0.5,
@@ -62,8 +64,11 @@ build_main_plot <- function(plot_data, exon_highlights,
     ggforce::facet_col(ggplot2::vars(combined_facet),
                        scales = "free_y", space = "free", shrink = TRUE)
   
+  # Wiggle color scale (or no-legend default) -- applied BEFORE the
+  # junction layer so new_scale_color can introduce a second one.
   if (!is.null(color_var)) {
-    p + ggplot2::scale_color_manual(values = lc$colors, name = color_var) +
+    p <- p +
+      ggplot2::scale_color_manual(values = lc$colors, name = color_var) +
       ggplot2::theme(
         legend.position = "bottom",
         legend.title    = ggplot2::element_text(size = 9),
@@ -71,11 +76,47 @@ build_main_plot <- function(plot_data, exon_highlights,
         legend.key.size = ggplot2::unit(0.4, "cm")
       )
   } else {
-    p + ggplot2::scale_color_manual(values = lc$colors, guide = "none") +
+    p <- p +
+      ggplot2::scale_color_manual(values = lc$colors, guide = "none") +
       ggplot2::theme(legend.position = "none")
   }
+  
+  # ---- Optional junction layer ---------------------------------------------
+  # Open a fresh color scale via ggnewscale so the junction
+  # strand/annot palette doesn't collide with the wiggle's color_var.
+  # Straight horizontal segments, color = strand_annot, thickness =
+  # log10(count). Each junction is its own interactive element.
+  if (!is.null(junctions) && nrow(junctions) > 0) {
+    pal <- junction_palette()
+    p <- p +
+      ggnewscale::new_scale_color() +
+      ggiraph::geom_segment_interactive(
+        data = junctions,
+        ggplot2::aes(x = start, xend = end,
+                     y = junc_y, yend = junc_y,
+                     color    = strand_annot,
+                     linewidth = junc_lw,
+                     tooltip  = junc_tooltip,
+                     data_id  = jid),
+        inherit.aes = FALSE,
+        lineend = "round"
+      ) +
+      ggplot2::scale_color_manual(
+        values = pal,
+        breaks = names(pal),       # stable legend order
+        name   = "Junction (strand/annot)",
+        drop   = TRUE
+      ) +
+      ggplot2::scale_linewidth_identity() +
+      ggplot2::guides(color = ggplot2::guide_legend(
+        nrow = 1,
+        override.aes = list(linewidth = 2)
+      )) +
+      ggplot2::theme(legend.position = "bottom")
+  }
+  
+  p
 }
-
 # Null-coalescing operator. Useful for the rare case where bed_color or
 # bed_alpha arrives as NULL (e.g. if the package is invoked from a
 # script without the BED UI controls populated).
