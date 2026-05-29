@@ -1,56 +1,25 @@
 #' Build the app server function
-#'
 #' @keywords internal
 build_server <- function(ctx) {
   function(input, output, session) {
-    shiny::updateSelectizeInput(
-      session, "target_gene",
-      choices  = ctx$unique_genes, server = TRUE,
-      selected = if ("ABCA4" %in% ctx$unique_genes) "ABCA4"
-      else ctx$unique_genes[1]
-    )
-    
-    rv <- shiny::reactiveValues(
-      chr = NULL, start = NULL, end = NULL, trigger = 0,
-      home_chr = NULL, home_start = NULL, home_end = NULL
-    )
+    shiny::updateSelectizeInput(session, "target_gene", choices = ctx$unique_genes, server = TRUE, selected = if ("ABCA4" %in% ctx$unique_genes) "ABCA4" else ctx$unique_genes[1])
+    rv <- shiny::reactiveValues(chr = NULL, start = NULL, end = NULL, trigger = 0, home_chr = NULL, home_start = NULL, home_end = NULL)
     
     register_navigation_observers(input, session, ctx, rv)
     register_dynamic_filters(input, output, ctx)
-    
     bed_data <- bed_data_reactive(input)
     
-    # Auto-refresh when a new BED is uploaded, but only if a plot
-    # already exists -- otherwise we'd trigger before chr/start/end
-    # are set and stop() out.
-    shiny::observeEvent(input$bed_file, {
-      if (!is.null(rv$chr)) rv$trigger <- rv$trigger + 1
-    })
-    
-    plot_reactive <- build_plot_reactive(input, ctx, rv, bed_data)
-    register_outputs(input, output, session, plot_reactive)
+    shiny::observeEvent(input$bed_file, { if (!is.null(rv$chr)) rv$trigger <- rv$trigger + 1 })
+    register_outputs(input, output, session, build_plot_reactive(input, ctx, rv, bed_data))
   }
 }
 
-#' Parse the uploaded BED file
-#'
-#' Returns NULL when no file is uploaded. Parse errors surface as a
-#' Shiny notification rather than crashing the app.
-#'
 #' @keywords internal
 bed_data_reactive <- function(input) {
   shiny::reactive({
     if (is.null(input$bed_file)) return(NULL)
-    tryCatch({
-      bed_gr <- rtracklayer::import.bed(input$bed_file$datapath)
-      data.table::as.data.table(as.data.frame(bed_gr))
-    }, error = function(e) {
-      shiny::showNotification(
-        paste("Failed to parse BED:", conditionMessage(e)),
-        type = "error", duration = 8
-      )
-      NULL
-    })
+    tryCatch({ data.table::as.data.table(as.data.frame(rtracklayer::import.bed(input$bed_file$datapath))) }, 
+             error = function(e) { shiny::showNotification(paste("Failed to parse BED:", conditionMessage(e)), type = "error", duration = 8); NULL })
   })
 }
 
@@ -58,46 +27,32 @@ bed_data_reactive <- function(input) {
 register_navigation_observers <- function(input, session, ctx, rv) {
   shiny::observeEvent(input$target_gene, {
     shiny::req(input$target_gene)
-    gene_rows <- ctx$anno_dt[type == "gene" & gene_name == input$target_gene]
-    if (nrow(gene_rows) > 0) {
-      t_chr   <- as.character(gene_rows$seqnames)[1]
-      t_start <- min(gene_rows$start)
-      t_end   <- max(gene_rows$end)
-      shiny::updateTextInput(session,    "target_chr",   value = t_chr)
-      shiny::updateNumericInput(session, "target_start", value = t_start)
-      shiny::updateNumericInput(session, "target_end",   value = t_end)
-      rv$home_chr   <- t_chr
-      rv$home_start <- t_start
-      rv$home_end   <- t_end
+    g_rows <- ctx$anno_dt[type == "gene" & gene_name == input$target_gene]
+    if (nrow(g_rows) > 0) {
+      rv$home_chr <- as.character(g_rows$seqnames)[1]; rv$home_start <- min(g_rows$start); rv$home_end <- max(g_rows$end)
+      shiny::updateTextInput(session, "target_chr", value = rv$home_chr)
+      shiny::updateNumericInput(session, "target_start", value = rv$home_start)
+      shiny::updateNumericInput(session, "target_end", value = rv$home_end)
     }
   })
   
-  shiny::observeEvent(input$plot_btn, {
-    rv$chr     <- input$target_chr
-    rv$start   <- as.integer(input$target_start)
-    rv$end     <- as.integer(input$target_end)
-    rv$trigger <- rv$trigger + 1
-  })
+  sync_and_trigger <- function(c, s, e) {
+    rv$chr <- c; rv$start <- as.integer(s); rv$end <- as.integer(e); rv$trigger <- rv$trigger + 1
+  }
   
+  shiny::observeEvent(input$plot_btn, { sync_and_trigger(input$target_chr, input$target_start, input$target_end) })
   shiny::observeEvent(input$reset_btn, {
-    shiny::req(rv$home_chr, rv$home_start, rv$home_end)
-    rv$chr   <- rv$home_chr
-    rv$start <- rv$home_start
-    rv$end   <- rv$home_end
-    shiny::updateTextInput(session,    "target_chr",   value = rv$chr)
-    shiny::updateNumericInput(session, "target_start", value = rv$start)
-    shiny::updateNumericInput(session, "target_end",   value = rv$end)
-    rv$trigger <- rv$trigger + 1
+    shiny::req(rv$home_chr)
+    shiny::updateTextInput(session, "target_chr", value = rv$home_chr)
+    shiny::updateNumericInput(session, "target_start", value = rv$home_start)
+    shiny::updateNumericInput(session, "target_end", value = rv$home_end)
+    sync_and_trigger(rv$home_chr, rv$home_start, rv$home_end)
   })
-  
   shiny::observeEvent(input$region_brush, {
-    brush <- input$region_brush
-    rv$start <- as.integer(brush$xmin)
-    rv$end   <- as.integer(brush$xmax)
+    sync_and_trigger(rv$chr, input$region_brush$xmin, input$region_brush$xmax)
     shiny::updateNumericInput(session, "target_start", value = rv$start)
-    shiny::updateNumericInput(session, "target_end",   value = rv$end)
+    shiny::updateNumericInput(session, "target_end", value = rv$end)
     session$resetBrush("region_brush")
-    rv$trigger <- rv$trigger + 1
   })
 }
 
@@ -105,153 +60,51 @@ register_navigation_observers <- function(input, session, ctx, rv) {
 register_dynamic_filters <- function(input, output, ctx) {
   output$dynamic_group_filters_ui <- shiny::renderUI({
     shiny::req(length(input$groupings) > 0)
-    inputs <- lapply(input$groupings, function(group_col) {
-      values <- ctx$eiad_meta[[group_col]]
-      char_values <- as.character(values)
-      char_values[is.na(values)] <- "NA"
-      choices <- sort(unique(char_values))
-      shiny::selectizeInput(
-        inputId  = paste0("dynamic_filter_", group_col),
-        label    = paste("Filter by", group_col, ":"),
-        choices  = choices,
-        multiple = TRUE
-      )
-    })
-    shiny::tagList(inputs)
-  })
-}
-
-#' @keywords internal
-filtered_meta_reactive <- function(input, ctx) {
-  shiny::reactive({
-    meta <- data.table::copy(ctx$eiad_meta)
-    for (g in input$groupings) {
-      sel <- input[[paste0("dynamic_filter_", g)]]
-      if (is.null(sel) || length(sel) == 0) next
-      if ("NA" %in% sel) {
-        other <- sel[sel != "NA"]
-        meta <- meta[is.na(get(g)) | get(g) %in% other]
-      } else {
-        meta <- meta[get(g) %in% sel]
-      }
-    }
-    meta
+    shiny::tagList(lapply(input$groupings, function(g) {
+      choices <- sort(unique(ifelse(is.na(ctx$eiad_meta[[g]]), "NA", as.character(ctx$eiad_meta[[g]]))))
+      shiny::selectizeInput(inputId = paste0("dynamic_filter_", g), label = paste("Filter by", g, ":"), choices = choices, multiple = TRUE)
+    }))
   })
 }
 
 #' @keywords internal
 build_plot_reactive <- function(input, ctx, rv, bed_data) {
-  filtered_meta <- filtered_meta_reactive(input, ctx)
-  
   shiny::eventReactive(rv$trigger, {
     shiny::req(rv$trigger > 0, rv$chr, rv$start, rv$end)
-    t_chr   <- rv$chr
-    t_start <- rv$start
-    t_end   <- rv$end
-    if (t_start >= t_end)
-      stop("Start position must be less than End position.")
+    if (rv$start >= rv$end) stop("Start position must be less than End position.")
     
-    # ---- Metadata pipeline
-    meta_cur <- filtered_meta()
-    meta_cur <- downsample_by_study(meta_cur, input$facet_group,
-                                    input$max_samples)
-    meta_cur <- sanitize_metadata(meta_cur)
-    
-    # ---- Annotation pipeline
-    anno_bits <- subset_region_annotation(ctx$anno_dt,
-                                          t_chr, t_start, t_end)
-    
-    # ---- Optional user-uploaded BED highlights
-    bed_dt <- bed_data()
-    bed_in_region <- if (is.null(bed_dt) || nrow(bed_dt) == 0) {
-      data.table::data.table(start = numeric(0), end = numeric(0),
-                             bed_tooltip = character(0))
-    } else {
-      sub <- bed_dt[seqnames == t_chr & start <= t_end & end >= t_start]
-      build_bed_tooltips(sub)
+    meta_cur <- data.table::copy(ctx$eiad_meta)
+    for (g in input$groupings) {
+      sel <- input[[paste0("dynamic_filter_", g)]]
+      if (length(sel) > 0) meta_cur <- if ("NA" %in% sel) meta_cur[is.na(get(g)) | get(g) %in% sel[sel != "NA"]] else meta_cur[get(g) %in% sel]
     }
     
-    # ---- Sample selection (CPM filter before BigWig I/O)
-    target_samples <- cpm_filter_samples(
-      meta_cur$sample_accession,
-      input$target_gene, ctx, input$min_expr
-    )
-    if (length(target_samples) == 0)
-      stop("No samples passed the log2(CPM+1) cutoff for ",
-           input$target_gene, ".")
+    meta_cur <- sanitize_metadata(downsample_by_study(meta_cur, input$facet_group, input$max_samples))
+    anno_bits <- subset_region_annotation(ctx$anno_dt, rv$chr, rv$start, rv$end)
+    
+    bed_sub <- bed_data(); bed_in_region <- if (is.null(bed_sub) || nrow(bed_sub) == 0) data.table::data.table(start=numeric(0), end=numeric(0), bed_tooltip=character(0))
+    else build_bed_tooltips(bed_sub[seqnames == rv$chr & start <= rv$end & end >= rv$start])
+    
+    target_samples <- cpm_filter_samples(meta_cur$sample_accession, input$target_gene, ctx, input$min_expr)
+    if (length(target_samples) == 0) stop("No samples passed expression cutoff.")
     meta_cur <- meta_cur[sample_accession %in% target_samples]
     
-    # ---- Bin geometry
-    bp_wide <- t_end - t_start
-    b_size  <- if (input$bin_size > 0) input$bin_size
-    else as.integer(max(1, bp_wide / 2000))
-    n_bins  <- as.integer(max(1, ceiling(bp_wide / b_size)))
+    bp_wide <- rv$end - rv$start
+    b_size <- if (input$bin_size > 0) input$bin_size else as.integer(max(1, bp_wide / 2000))
     
-    # ---- BigWig read
-    dt_full <- read_region_bigwigs(
-      target_samples, ctx$bw_file_map,
-      t_chr, t_start, t_end, n_bins,
-      input$summary_type, ctx$bp_backend
-    )
+    dt_full <- read_region_bigwigs(target_samples, ctx$bw_file_map, rv$chr, rv$start, rv$end, as.integer(max(1, ceiling(bp_wide / b_size))), input$summary_type, ctx$bp_backend)
+    show_juncs <- !is.null(ctx$sj_se) && isTRUE(input$show_junctions)
+    junc_band <- if (show_juncs) 0.4 else 0
     
-    # ---- Junction track? Reserve a thin per-sample band so junctions
-    # don't bleed into the previous sample's wiggle.
-    show_junctions <- !is.null(ctx$sj_se) && isTRUE(input$show_junctions)
-    junc_band <- if (show_junctions) 0.4 else 0
+    pd_bits <- build_plot_data(dt_full, meta_cur, input$facet_group, input$overlap_factor, input$summary_type, junc_band = junc_band)
+    junctions <- if (show_juncs) attach_junction_positions(read_region_junctions(ctx, rv$chr, rv$start, rv$end, samples = target_samples, min_reads = as.integer(input$min_junc_reads)), pd_bits$unique_samples, junc_band = junc_band) else NULL
     
-    # ---- Plot data assembly (junc_band shifts the wiggle baseline up)
-    pd_bits <- build_plot_data(dt_full, meta_cur, input$facet_group,
-                               input$overlap_factor, input$summary_type,
-                               junc_band = junc_band)
-    
-    junctions <- if (show_junctions) {
-      raw <- read_region_junctions(
-        ctx, t_chr, t_start, t_end,
-        samples        = target_samples,
-        min_reads      = as.integer(input$min_junc_reads)
-      )
-      attach_junction_positions(raw, pd_bits$unique_samples,
-                                junc_band = junc_band)
-    } else NULL
-    
-    color_var <- if (isTRUE(nzchar(input$color_by))) input$color_by else NULL
-    
-    # ---- Plots
-    main_plot <- build_main_plot(
-      pd_bits$plot_data,
-      exon_highlights = anno_bits$exon_highlights,
-      junctions       = junctions,
-      bed_highlights  = bed_in_region,
-      bed_color       = input$bed_color,
-      chr             = t_chr,
-      w_start         = t_start,
-      w_end           = t_end,
-      overlap_factor  = input$overlap_factor,
-      color_var       = color_var,
-      summary_type    = input$summary_type
-    )
-    
-    mm <- build_minimap(
-      anno_bits$region_anno, anno_bits$tx_base, anno_bits$tx_exons,
-      anno_bits$has_transcripts, t_chr, t_start, t_end
-    )
-    
-    dims <- compute_plot_dimensions(
-      n_samples = nrow(pd_bits$unique_samples),
-      n_facets  = length(unique(pd_bits$unique_samples$combined_facet)),
-      n_tx      = mm$num_tx,
-      has_color = !is.null(color_var),
-      minimap_override = input$minimap_height,
-      show_junctions   = show_junctions
-    )
+    mm <- build_minimap(anno_bits$region_anno, anno_bits$tx_base, anno_bits$tx_exons, anno_bits$has_transcripts, rv$chr, rv$start, rv$end)
+    dims <- compute_plot_dimensions(nrow(pd_bits$unique_samples), length(unique(pd_bits$unique_samples$combined_facet)), mm$num_tx, isTRUE(nzchar(input$color_by)), input$minimap_height, show_juncs)
     
     list(
-      plot            = main_plot,
-      auto_height     = dims$main_px,
-      plot_minimap    = mm$plot,
-      minimap_px      = dims$minimap_px,
-      tx_hover_info   = mm$tx_hover_info,
-      has_transcripts = anno_bits$has_transcripts
+      plot = build_main_plot(pd_bits$plot_data, anno_bits$exon_highlights, junctions, bed_in_region, input$bed_color, rv$chr, rv$start, rv$end, input$overlap_factor, if(isTRUE(nzchar(input$color_by))) input$color_by else NULL, input$summary_type),
+      auto_height = dims$main_px, plot_minimap = mm$plot, minimap_px = dims$minimap_px, tx_hover_info = mm$tx_hover_info, has_transcripts = anno_bits$has_transcripts
     )
   })
 }

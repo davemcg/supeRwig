@@ -48,18 +48,11 @@ sanitize_metadata <- function(meta) {
   char_cols <- names(meta)[vapply(meta, is.character, logical(1))]
   for (col in char_cols) {
     safe <- meta[[col]]
-    # Force the encoding marker to UTF-8 before round-tripping. Without
-    # this, strings marked "unknown" get interpreted in the current
-    # locale by iconv and bad bytes survive sub="".
     Encoding(safe) <- "UTF-8"
-    safe <- iconv(safe, from = "UTF-8", to = "UTF-8", sub = "")
-    # If iconv still returns NA for a non-NA input (rare, version-dependent),
-    # fall back to empty string so downstream nchar/gsub don't trip.
-    bad <- is.na(safe) & !is.na(meta[[col]])
-    if (any(bad)) safe[bad] <- ""
-    safe <- gsub("'",  "&#39;",  safe, useBytes = TRUE)
-    safe <- gsub("\"", "&quot;", safe, useBytes = TRUE)
-    Encoding(safe) <- "UTF-8"   # gsub(useBytes=TRUE) drops the mark
+    safe <- iconv(safe, "UTF-8", "UTF-8", sub = "")
+    safe[is.na(safe) & !is.na(meta[[col]])] <- ""
+    safe <- gsub("\"", "&quot;", gsub("'", "&#39;", safe, useBytes = TRUE), useBytes = TRUE)
+    Encoding(safe) <- "UTF-8"
     data.table::set(meta, j = col, value = safe)
   }
   meta

@@ -14,7 +14,6 @@ build_context(
 )
 }
 \description{
-Bundles everything the UI and server need so we can pass a single
-object through the call graph instead of carrying ~8 globals.
+Assemble the app context (loaded data + worker pool)
 }
 \keyword{internal}

@@ -18,20 +18,6 @@ build_main_plot(
   summary_type
 )
 }
-\arguments{
-\item{plot_data}{Per-bin coverage with offsets and tooltips.}
-
-\item{exon_highlights}{Reduced exon ranges to shade behind the traces.}
-
-\item{junctions}{Optional data.table with columns \verb{sample, start, end, strand, annot, count, strand_annot, junc_y, junc_lw, junc_tooltip, jid} as produced by \code{attach_junction_positions}.
-NULL or zero-row = no junction layer drawn.}
-
-\item{bed_highlights}{Optional user-uploaded BED ranges (subset to
-the current window). Empty data.table = no
-BED layer drawn.}
-
-\item{bed_color}{Fill color and opacity for BED bands.}
-}
 \description{
 Build the main wiggle ggplot
 }

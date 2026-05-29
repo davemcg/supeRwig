@@ -1,25 +1,17 @@
 #' Read one BigWig as a binned summary
 #'
-#' Top-level definition so its closure environment is the package
-#' namespace, not the server call frame. Closure capture of the
-#' server frame is what causes the
-#' "future.globals.maxSize exceeded" error on PSOCK backends.
-#'
 #' @keywords internal
-.bw_summary_one <- function(path, sname, chr, start, end, n_bins, type) {
+.bw_summary_one <- function(path, sname, gr, n_bins, type) {
   tryCatch({
-    bwf <- rtracklayer::BigWigFile(path)
-    gr  <- GenomicRanges::GRanges(
-      seqnames = chr,
-      ranges   = IRanges::IRanges(start = start, end = end)
-    )
-    sm   <- rtracklayer::summary(bwf, gr, size = n_bins, type = type)
-    bins <- sm[[1]]
-    data.table::data.table(
-      sample     = sname,
+    bwf  <- rtracklayer::BigWigFile(path)
+    bins <- rtracklayer::summary(bwf, gr, size = n_bins, type = type)[[1]]
+    scores <- as.numeric(bins$score)
+    
+    list(
+      sample     = rep.int(sname, length(scores)),
       binned_pos = GenomicRanges::start(bins),
       bin_end    = GenomicRanges::end(bins),
-      value      = as.numeric(bins$score)
+      value      = scores
     )
   }, error = function(e) {
     warning(sprintf("Failed to read %s: %s",
@@ -44,20 +36,20 @@ read_region_bigwigs <- function(samples, bw_file_map, chr, start, end,
   if (length(target_files) == 0)
     stop("No BigWig files matched the post-filter samples.")
   
-  bw_paths <- unname(target_files)
-  sname_v  <- names(target_files)
-  
   cat(sprintf("Reading %d BigWigs at %d bins...\n",
-              length(bw_paths), n_bins))
+              length(target_files), n_bins))
   t0 <- Sys.time()
+  
+  gr <- GenomicRanges::GRanges(
+    seqnames = chr,
+    ranges   = IRanges::IRanges(start = start, end = end)
+  )
   
   results <- BiocParallel::bpmapply(
     FUN       = .bw_summary_one,
-    path      = bw_paths,
-    sname     = sname_v,
-    MoreArgs  = list(chr    = chr,
-                     start  = start,
-                     end    = end,
+    path      = unname(target_files),
+    sname     = names(target_files),
+    MoreArgs  = list(gr     = gr,
                      n_bins = n_bins,
                      type   = summary_type),
     SIMPLIFY  = FALSE,
