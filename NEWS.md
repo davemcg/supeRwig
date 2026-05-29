@@ -1,3 +1,6 @@
+# 0.2.4
+Timing info added to tooltip (next to Coverage (cpm) in the wiggle card)
+
 # 0.2.3 
 Plot will regenerate now after zooming in (too imprecise without re-doing the bin size). 
 Tightened up the UI elements to more efficiently use space. Removed bigwig stat type 

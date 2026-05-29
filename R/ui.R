@@ -36,7 +36,7 @@ build_sidebar <- function(ctx) {
     shiny::h4("Target & Parameters"),
     shiny::selectizeInput("target_gene", "Search by Gene:",
                           choices = NULL, multiple = FALSE),
-
+    
     shiny::textInput("target_region", "Search by Region:",
                      value = "chr1:93,992,834-94,121,148",
                      placeholder = "chr1:93,992,834-94,121,148"),
@@ -140,10 +140,13 @@ build_plot_viewer_panel <- function() {
           class = "d-flex align-items-center w-100",
           style = "gap: 0.5rem;",
           shiny::div(
-            style = paste("flex: 1; min-width: 0; text-align: left;",
-                          "white-space: nowrap; overflow: hidden;",
-                          "text-overflow: ellipsis;"),
-            "Coverage (cpm)"
+            style = "flex: 1; min-width: 0; text-align: left; display: flex; align-items: center; gap: 0.35rem;",
+            shiny::span(style = "white-space: nowrap; overflow: hidden; text-overflow: ellipsis;", "Coverage (cpm)"),
+            bslib::tooltip(
+              shiny::span(style = "cursor: pointer; font-size: 0.9rem; color: #6c757d;", "ℹ"),
+              shiny::uiOutput("timing_info"),
+              placement = "right"
+            )
           ),
           shiny::div(
             style = paste("flex: 2; min-width: 0; text-align: center;",

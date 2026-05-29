@@ -12,6 +12,10 @@ build_server <- function(ctx) {
       chr = NULL, start = NULL, end = NULL, trigger = 0,
       home_chr = NULL, home_start = NULL, home_end = NULL
     )
+    timings_rv <- shiny::reactiveValues(
+      bigwig = NA_real_, plot_data = NA_real_,
+      main_plot = NA_real_, girafe = NA_real_
+    )
     
     register_navigation_observers(input, session, ctx, rv)
     register_dynamic_filters(input, output, ctx)
@@ -19,7 +23,8 @@ build_server <- function(ctx) {
     
     register_outputs(
       input, output, session,
-      build_plot_reactive(input, ctx, rv, bed_data)
+      build_plot_reactive(input, ctx, rv, bed_data, timings_rv),
+      timings_rv
     )
   }
 }
@@ -141,7 +146,7 @@ register_dynamic_filters <- function(input, output, ctx) {
 }
 
 #' @keywords internal
-register_outputs <- function(input, output, session, plot_reactive) {
+register_outputs <- function(input, output, session, plot_reactive, timings_rv) {
   output$minimap_container <- shiny::renderUI({
     shiny::req(plot_reactive())
     h <- plot_reactive()$minimap_px
@@ -250,7 +255,23 @@ register_outputs <- function(input, output, session, plot_reactive) {
         ggiraph::opts_hover(css = "stroke-width: 2px; stroke: #3A5836;")
       )
     )
-    cat("girafe:", round(as.numeric(Sys.time() - t0), 2), "s\n")
+    timings_rv$girafe <- as.numeric(Sys.time() - t0)
     g
+  })
+  
+  output$timing_info <- shiny::renderUI({
+    fmt <- function(x) if (is.na(x)) "—" else sprintf("%.2f s", x)
+    shiny::HTML(paste0(
+      "<div style='font-family: monospace; text-align: left; white-space: pre; font-size: 0.8rem; line-height: 1.4;'>",
+      "BigWig read     : ", fmt(timings_rv$bigwig), "<br>",
+      "build_plot_data : ", fmt(timings_rv$plot_data), "<br>",
+      "build_main_plot : ", fmt(timings_rv$main_plot), "<br>",
+      "girafe (server) : ", fmt(timings_rv$girafe), "<br>",
+      "------------------------<br>",
+      "Total (server)  : ", fmt(sum(c(timings_rv$bigwig, timings_rv$plot_data,
+                                      timings_rv$main_plot, timings_rv$girafe),
+                                    na.rm = TRUE)),
+      "</div>"
+    ))
   })
 }

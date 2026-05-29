@@ -4,7 +4,7 @@
 \alias{build_plot_reactive}
 \title{Build the reactive graph that feeds the plot outputs}
 \usage{
-build_plot_reactive(input, ctx, rv, bed_data)
+build_plot_reactive(input, ctx, rv, bed_data, timings_rv)
 }
 \description{
 Returns a single reactive of the bundle that \code{register_outputs} expects.

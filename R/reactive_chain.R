@@ -6,7 +6,7 @@
 #' whenever a cosmetic input changes, including the brush-driven view).
 #'
 #' @keywords internal
-build_plot_reactive <- function(input, ctx, rv, bed_data) {
+build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
   
   # ---- Gated snapshot ----------------------------------------------------
   gated_r <- shiny::eventReactive(rv$trigger, {
@@ -110,14 +110,20 @@ build_plot_reactive <- function(input, ctx, rv, bed_data) {
   })
   
   plot_data_r <- shiny::reactive({
-    t0 <- Sys.time()
     g  <- gated_r()
     cs <- cpm_samples_r()
     junc_band <- if (g$show_junctions) 0.4 else 0
-    out <- build_plot_data(bigwig_r(), cs$meta, g$facet_group,
-                           input$overlap_factor, 
-                           junc_band = junc_band)
-    cat("build_plot_data:", round(as.numeric(Sys.time() - t0), 2), "s\n")
+    
+    # Time the BigWig fetch externally — captures cache hits (~0 s)
+    # as well as cold reads.
+    t_bw <- Sys.time()
+    bw   <- bigwig_r()
+    timings_rv$bigwig <- as.numeric(Sys.time() - t_bw)
+    
+    t_pd <- Sys.time()
+    out <- build_plot_data(bw, cs$meta, g$facet_group,
+                           input$overlap_factor, junc_band = junc_band)
+    timings_rv$plot_data <- as.numeric(Sys.time() - t_pd)
     out
   })
   
@@ -158,16 +164,20 @@ build_plot_reactive <- function(input, ctx, rv, bed_data) {
     mm   <- minimap_r()
     dims <- dimensions_r()
     color_var <- if (isTRUE(nzchar(input$color_by))) input$color_by else NULL
+    
+    t_mp <- Sys.time()
+    main_plot <- build_main_plot(
+      pd$plot_data, a$exon_highlights, junctions_positioned_r(),
+      bed_in_region_r(), input$bed_color,
+      g$chr, g$start, g$end,
+      input$overlap_factor, color_var
+    )
+    timings_rv$main_plot <- as.numeric(Sys.time() - t_mp)
+    
     list(
-      plot = build_main_plot(
-        pd$plot_data, a$exon_highlights, junctions_positioned_r(),
-        bed_in_region_r(), input$bed_color,
-        g$chr, g$start, g$end,
-        input$overlap_factor, color_var
-      ),
-      facet_cols   = g$facet_group,
+      plot            = main_plot,
+      facet_cols      = g$facet_group,
       target_gene     = g$target_gene,
-      auto_height     = dims$main_px,
       auto_height     = dims$main_px,
       plot_minimap    = mm$plot,
       minimap_px      = dims$minimap_px,
