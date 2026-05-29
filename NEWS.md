@@ -1,3 +1,6 @@
+# 0.2.2
+Set up a chain so the plot doesn't (re)pull the bigwig data if not necessary (change plot color, zooming in, etc).
+
 # 0.2.1 
 Code optimizations to simplify and improve performance
 

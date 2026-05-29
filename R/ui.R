@@ -60,7 +60,7 @@ build_sidebar <- function(ctx) {
       multiple = FALSE
     ),
     do.call(bslib::accordion, c(
-      list(open = "Plot Settings"),
+      #list(open = "Plot Settings"),
       list(
         bslib::accordion_panel(
           "Data Filters",
