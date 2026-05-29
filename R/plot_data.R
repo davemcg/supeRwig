@@ -26,11 +26,12 @@ subset_region_annotation <- function(anno_dt, chr, w_start, w_end) {
 }
 
 #' @keywords internal
-build_plot_data <- function(dt_full, meta_cur, facet_cols, overlap_factor, summary_type, junc_band = 0, tooltip_max_chars = 120) {
+build_plot_data <- function(dt_full, meta_cur, facet_cols, overlap_factor, junc_band = 0, tooltip_max_chars = 120) {
   if (length(facet_cols) == 0) { meta_cur$dummy_facet <- "All Samples"; facet_cols <- "dummy_facet" }
   
   tissue_map <- unique(meta_cur)[!duplicated(sample_accession)]
-  tissue_map[, combined_facet := paste0(paste(facet_cols, collapse = " - "), "\n", do.call(paste, c(.SD, sep = " - "))), .SDcols = facet_cols]
+  tissue_map[, combined_facet := do.call(paste, c(.SD, sep = " - ")),
+             .SDcols = facet_cols]
   
   # Vectorized tooltip construction
   tips <- paste0("<b>Sample:</b> ", tissue_map$sample_accession)
@@ -50,7 +51,7 @@ build_plot_data <- function(dt_full, meta_cur, facet_cols, overlap_factor, summa
   max_log <- max(pd$log_val, na.rm = TRUE); if (max_log == 0 || is.na(max_log)) max_log <- 1
   
   pd[, offset_y := (log_val / max_log) * overlap_factor + local_idx + junc_band]
-  pd[, tooltip_text := paste0(static_tooltip, "<br><b>", summary_type, ":</b> ", round(value, 2))]
+  pd[, tooltip_text := paste0(static_tooltip, ": ", round(value, 2))]
   data.table::setorderv(pd, c("combined_facet", "local_idx", "plot_x"))
   
   list(plot_data = pd, unique_samples = unique_samples)

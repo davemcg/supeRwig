@@ -1,3 +1,8 @@
+# 0.2.3 
+Plot will regenerate now after zooming in (too imprecise without re-doing the bin size). 
+Tightened up the UI elements to more efficiently use space. Removed bigwig stat type 
+as I think "max" is always the best choice.
+
 # 0.2.2
 Set up a chain so the plot doesn't (re)pull the bigwig data if not necessary (change plot color, zooming in, etc).
 

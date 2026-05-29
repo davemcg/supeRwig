@@ -10,8 +10,7 @@ build_server <- function(ctx) {
     )
     rv <- shiny::reactiveValues(
       chr = NULL, start = NULL, end = NULL, trigger = 0,
-      home_chr = NULL, home_start = NULL, home_end = NULL,
-      view_start = NULL, view_end = NULL
+      home_chr = NULL, home_start = NULL, home_end = NULL
     )
     
     register_navigation_observers(input, session, ctx, rv)
@@ -44,6 +43,28 @@ bed_data_reactive <- function(input) {
   })
 }
 
+#' Parse a UCSC-style region string ("chr1:93,992,834-94,121,148")
+#' @keywords internal
+parse_ucsc_region <- function(s) {
+  if (is.null(s) || !nzchar(s)) return(NULL)
+  # Strip commas and whitespace; tolerate "chr1: 100 - 200" and "1:100-200"
+  s <- gsub("[,[:space:]]", "", s)
+  m <- regmatches(s, regexec("^([^:]+):(\\d+)-(\\d+)$", s))[[1]]
+  if (length(m) != 4L) return(NULL)
+  start <- suppressWarnings(as.integer(m[3]))
+  end   <- suppressWarnings(as.integer(m[4]))
+  if (is.na(start) || is.na(end) || start >= end) return(NULL)
+  list(chr = m[2], start = start, end = end)
+}
+
+#' Format chr/start/end back into UCSC-style with thousands separators
+#' @keywords internal
+format_ucsc_region <- function(chr, start, end) {
+  sprintf("%s:%s-%s", chr,
+          format(start, big.mark = ",", scientific = FALSE),
+          format(end,   big.mark = ",", scientific = FALSE))
+}
+
 #' @keywords internal
 register_navigation_observers <- function(input, session, ctx, rv) {
   shiny::observeEvent(input$target_gene, {
@@ -53,44 +74,50 @@ register_navigation_observers <- function(input, session, ctx, rv) {
       rv$home_chr   <- as.character(g_rows$seqnames)[1]
       rv$home_start <- min(g_rows$start)
       rv$home_end   <- max(g_rows$end)
-      shiny::updateTextInput(session,    "target_chr",   value = rv$home_chr)
-      shiny::updateNumericInput(session, "target_start", value = rv$home_start)
-      shiny::updateNumericInput(session, "target_end",   value = rv$home_end)
+      shiny::updateTextInput(
+        session, "target_region",
+        value = format_ucsc_region(rv$home_chr, rv$home_start, rv$home_end)
+      )
     }
   })
-  
-  # Read region: the slab of BigWig that's actually been pulled. Only
-  # changes (and re-reads) on Generate Plot or Reset Zoom. View region
-  # resets to match the read region on each pull.
   set_read_region <- function(c, s, e) {
-    rv$chr        <- c
-    rv$start      <- as.integer(s)
-    rv$end        <- as.integer(e)
-    rv$view_start <- rv$start
-    rv$view_end   <- rv$end
-    rv$trigger    <- rv$trigger + 1
+    rv$chr     <- c
+    rv$start   <- as.integer(s)
+    rv$end     <- as.integer(e)
+    rv$trigger <- rv$trigger + 1
   }
   
   shiny::observeEvent(input$plot_btn, {
-    set_read_region(input$target_chr, input$target_start, input$target_end)
+    parsed <- parse_ucsc_region(input$target_region)
+    if (is.null(parsed)) {
+      shiny::showNotification(
+        "Region must look like chr1:93,992,834-94,121,148 (start < end).",
+        type = "error", duration = 6
+      )
+      return()
+    }
+    set_read_region(parsed$chr, parsed$start, parsed$end)
   })
   
   shiny::observeEvent(input$reset_btn, {
     shiny::req(rv$home_chr)
-    shiny::updateTextInput(session,    "target_chr",   value = rv$home_chr)
-    shiny::updateNumericInput(session, "target_start", value = rv$home_start)
-    shiny::updateNumericInput(session, "target_end",   value = rv$home_end)
+    shiny::updateTextInput(
+      session, "target_region",
+      value = format_ucsc_region(rv$home_chr, rv$home_start, rv$home_end)
+    )
     set_read_region(rv$home_chr, rv$home_start, rv$home_end)
   })
   
-  # Brushing the minimap only moves the view window — no re-read.
-  # Inputs reflect the new view so Generate Plot would re-pull at
-  # higher resolution for the zoomed-in coords if the user wants that.
+  # Brush triggers a full re-read at the zoomed coords so the bin
+  # size auto-recalculates to the new region width.
   shiny::observeEvent(input$region_brush, {
-    rv$view_start <- as.integer(input$region_brush$xmin)
-    rv$view_end   <- as.integer(input$region_brush$xmax)
-    shiny::updateNumericInput(session, "target_start", value = rv$view_start)
-    shiny::updateNumericInput(session, "target_end",   value = rv$view_end)
+    s <- as.integer(input$region_brush$xmin)
+    e <- as.integer(input$region_brush$xmax)
+    shiny::updateTextInput(
+      session, "target_region",
+      value = format_ucsc_region(rv$chr, s, e)
+    )
+    set_read_region(rv$chr, s, e)
     session$resetBrush("region_brush")
   })
 }
@@ -132,6 +159,18 @@ register_outputs <- function(input, output, session, plot_reactive) {
       ),
       shiny::uiOutput("hover_info")
     )
+  })
+  
+  output$bw_facet_label <- shiny::renderText({
+    shiny::req(plot_reactive())
+    fc <- plot_reactive()$facet_cols
+    if (length(fc) == 0) "" else paste(fc, collapse = " - ")
+  })
+  
+  output$bw_gene_label <- shiny::renderText({
+    shiny::req(plot_reactive())
+    g <- plot_reactive()$target_gene
+    if (is.null(g) || !nzchar(g)) "" else g
   })
   
   output$minimap <- shiny::renderPlot(

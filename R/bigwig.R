@@ -24,7 +24,7 @@
 #'
 #' @keywords internal
 read_region_bigwigs <- function(samples, bw_file_map, chr, start, end,
-                                n_bins, summary_type, bp_backend) {
+                                n_bins, bp_backend) {
   target_files  <- bw_file_map[samples]
   missing_files <- samples[is.na(target_files)]
   if (length(missing_files) > 0) {
@@ -51,7 +51,7 @@ read_region_bigwigs <- function(samples, bw_file_map, chr, start, end,
     sname     = names(target_files),
     MoreArgs  = list(gr     = gr,
                      n_bins = n_bins,
-                     type   = summary_type),
+                     type   = 'max'),
     SIMPLIFY  = FALSE,
     USE.NAMES = FALSE,
     BPPARAM   = bp_backend

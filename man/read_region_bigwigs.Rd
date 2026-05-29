@@ -4,16 +4,7 @@
 \alias{read_region_bigwigs}
 \title{Read a genomic region across many BigWigs in parallel}
 \usage{
-read_region_bigwigs(
-  samples,
-  bw_file_map,
-  chr,
-  start,
-  end,
-  n_bins,
-  summary_type,
-  bp_backend
-)
+read_region_bigwigs(samples, bw_file_map, chr, start, end, n_bins, bp_backend)
 }
 \description{
 Read a genomic region across many BigWigs in parallel

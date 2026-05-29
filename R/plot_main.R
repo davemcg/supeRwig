@@ -3,14 +3,17 @@
 build_main_plot <- function(plot_data, exon_highlights, junctions = NULL,
                             bed_highlights = data.table::data.table(start = numeric(0), end = numeric(0)),
                             bed_color = "#B22222", chr, w_start, w_end,
-                            overlap_factor, color_var, summary_type) {
+                            overlap_factor, color_var) {
   lc <- resolve_line_colors(plot_data, color_var)
   plot_data <- lc$plot_data
+  
   
   p <- ggplot2::ggplot(plot_data) +
     ggplot2::geom_rect(data = exon_highlights, ggplot2::aes(xmin = start - 0.5, xmax = end + 0.5, ymin = -Inf, ymax = Inf), inherit.aes = FALSE, fill = "grey85", alpha = 0.5) +
     ggiraph::geom_rect_interactive(data = bed_highlights, ggplot2::aes(xmin = start - 0.5, xmax = end + 0.5, ymin = -Inf, ymax = Inf, tooltip = bed_tooltip, data_id = bed_tooltip), inherit.aes = FALSE, fill = bed_color %||% "#B22222", alpha = 1) +
     ggiraph::geom_step_interactive(ggplot2::aes(x = plot_x, y = offset_y, group = sample, tooltip = tooltip_text, data_id = sample, color = line_color), direction = "mid", linewidth = 0.4) +
+    # reduces plotting time for ABCA4 (defaults) from ~2.5 to ~2.2 seconds.
+    #ggplot2::geom_step(ggplot2::aes(x = plot_x, y = offset_y, group = sample, color = line_color), direction = "mid", linewidth = 0.4) +
     ggplot2::scale_y_continuous(breaks = NULL, expand = ggplot2::expansion(add = c(0.1, overlap_factor - 1))) +
     ggplot2::scale_x_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE)) +
     ggplot2::scale_color_manual(values = lc$colors, guide = "none") +

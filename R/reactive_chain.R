@@ -28,7 +28,6 @@ build_plot_reactive <- function(input, ctx, rv, bed_data) {
       target_gene     = input$target_gene,
       min_expr        = input$min_expr,
       bin_size        = input$bin_size,
-      summary_type    = input$summary_type,
       show_junctions  = !is.null(ctx$sj_se) && isTRUE(input$show_junctions),
       min_junc_reads  = as.integer(input$min_junc_reads %||% 5L)
     )
@@ -66,15 +65,15 @@ build_plot_reactive <- function(input, ctx, rv, bed_data) {
     cs <- cpm_samples_r()
     bp_wide <- g$end - g$start
     b_size  <- if (g$bin_size > 0) g$bin_size
-    else as.integer(max(1, bp_wide / 2000))
+    else as.integer(max(1, bp_wide / 1000)) # bigger values (e.g.2000) increases the resolution of wiggle plot (and increases plotting time)
     n_bins  <- as.integer(max(1, ceiling(bp_wide / b_size)))
     read_region_bigwigs(cs$samples, ctx$bw_file_map,
                         g$chr, g$start, g$end,
-                        n_bins, g$summary_type, ctx$bp_backend)
+                        n_bins, ctx$bp_backend)
   }) |> shiny::bindCache(
     cpm_samples_r()$samples,
     gated_r()$chr, gated_r()$start, gated_r()$end,
-    gated_r()$bin_size, gated_r()$summary_type
+    gated_r()$bin_size
   )
   
   junctions_raw_r <- shiny::reactive({
@@ -97,16 +96,6 @@ build_plot_reactive <- function(input, ctx, rv, bed_data) {
   
   # ---- Live nodes --------------------------------------------------------
   
-  # Live view window. Brush updates rv$view_start/end without bumping
-  # rv$trigger, so gated_r and everything cached under it stay valid.
-  view_r <- shiny::reactive({
-    g <- gated_r()
-    list(
-      chr   = g$chr,
-      start = rv$view_start %||% g$start,
-      end   = rv$view_end   %||% g$end
-    )
-  })
   
   bed_in_region_r <- shiny::reactive({
     g       <- gated_r()
@@ -126,7 +115,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data) {
     cs <- cpm_samples_r()
     junc_band <- if (g$show_junctions) 0.4 else 0
     out <- build_plot_data(bigwig_r(), cs$meta, g$facet_group,
-                           input$overlap_factor, g$summary_type,
+                           input$overlap_factor, 
                            junc_band = junc_band)
     cat("build_plot_data:", round(as.numeric(Sys.time() - t0), 2), "s\n")
     out
@@ -164,25 +153,21 @@ build_plot_reactive <- function(input, ctx, rv, bed_data) {
   # Final bundle consumed by register_outputs
   shiny::reactive({
     g    <- gated_r()
-    v    <- view_r()
     pd   <- plot_data_r()
     a    <- annotation_r()
     mm   <- minimap_r()
     dims <- dimensions_r()
     color_var <- if (isTRUE(nzchar(input$color_by))) input$color_by else NULL
-    
-    t0 <- Sys.time()
-    main_plot <- build_main_plot(
-      pd$plot_data, a$exon_highlights, junctions_positioned_r(),
-      bed_in_region_r(), input$bed_color,
-      v$chr, v$start, v$end,
-      input$overlap_factor, color_var, g$summary_type
-    )
-    cat("build_main_plot:", round(as.numeric(Sys.time() - t0), 2), "s\n")
-    
-    
     list(
-      plot = main_plot,
+      plot = build_main_plot(
+        pd$plot_data, a$exon_highlights, junctions_positioned_r(),
+        bed_in_region_r(), input$bed_color,
+        g$chr, g$start, g$end,
+        input$overlap_factor, color_var
+      ),
+      facet_cols   = g$facet_group,
+      target_gene     = g$target_gene,
+      auto_height     = dims$main_px,
       auto_height     = dims$main_px,
       plot_minimap    = mm$plot,
       minimap_px      = dims$minimap_px,

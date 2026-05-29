@@ -2,11 +2,11 @@
 #'
 #' @keywords internal
 build_ui <- function(ctx) {
-  bslib::page_navbar(
+  bslib::page_sidebar(
     title   = "supeRwig",
     theme   = bslib::bs_theme(version = 5, primary = "#3A5836"),
     sidebar = build_sidebar(ctx),
-    bslib::nav_panel("Plot Viewer", build_plot_viewer_panel())
+    build_plot_viewer_panel()
   )
 }
 
@@ -36,14 +36,11 @@ build_sidebar <- function(ctx) {
     shiny::h4("Target & Parameters"),
     shiny::selectizeInput("target_gene", "Search by Gene:",
                           choices = NULL, multiple = FALSE),
-    shiny::hr(),
-    shiny::h6("Genomic Window"),
-    shiny::textInput("target_chr", "Chromosome:", value = "chr1"),
-    shiny::numericInput("target_start", "Start:",
-                        value = 93992834, min = 1),
-    shiny::numericInput("target_end",   "End:",
-                        value = 94121148, min = 1),
-    shiny::hr(),
+
+    shiny::textInput("target_region", "Search by Region:",
+                     value = "chr1:93,992,834-94,121,148",
+                     placeholder = "chr1:93,992,834-94,121,148"),
+    shiny::hr(class = "my-2"),
     shiny::selectizeInput(
       "facet_group", "Facet / Group By:",
       choices  = meta_cols,
@@ -60,14 +57,14 @@ build_sidebar <- function(ctx) {
       multiple = FALSE
     ),
     do.call(bslib::accordion, c(
-      #list(open = "Plot Settings"),
+      list(open = FALSE),
       list(
         bslib::accordion_panel(
           "Data Filters",
           shiny::selectizeInput("groupings", "Metadata to Filter By:",
                                 choices = meta_cols, multiple = TRUE),
           shiny::uiOutput("dynamic_group_filters_ui"),
-          shiny::hr(),
+          shiny::hr(class = "my-2"),
           shiny::numericInput("max_samples",
                               "Max Samples per Study (0 = All):",
                               value = 4, min = 0)
@@ -86,10 +83,7 @@ build_sidebar <- function(ctx) {
                               value = 0, min = 0),
           shiny::numericInput("minimap_height",
                               "Minimap Height (pixels) [0 = Auto]:",
-                              value = 0, min = 0),
-          shiny::selectInput("summary_type", "Bin Summary:",
-                             choices  = c("max", "mean", "min", "sd"),
-                             selected = "max")
+                              value = 0, min = 0)
         ),
         bslib::accordion_panel(
           "BED Highlights",
@@ -140,6 +134,31 @@ build_plot_viewer_panel <- function() {
     bslib::card(
       full_screen = TRUE,
       class = "p-0",
+      bslib::card_header(
+        class = "bg-light py-1 px-2",
+        shiny::div(
+          class = "d-flex align-items-center w-100",
+          style = "gap: 0.5rem;",
+          shiny::div(
+            style = paste("flex: 1; min-width: 0; text-align: left;",
+                          "white-space: nowrap; overflow: hidden;",
+                          "text-overflow: ellipsis;"),
+            "Coverage (cpm)"
+          ),
+          shiny::div(
+            style = paste("flex: 2; min-width: 0; text-align: center;",
+                          "white-space: nowrap; overflow: hidden;",
+                          "text-overflow: ellipsis;"),
+            shiny::textOutput("bw_facet_label", inline = TRUE)
+          ),
+          shiny::div(
+            style = paste("flex: 1; min-width: 0; text-align: right;",
+                          "white-space: nowrap; overflow: hidden;",
+                          "text-overflow: ellipsis;"),
+            shiny::textOutput("bw_gene_label", inline = TRUE)
+          )
+        )
+      ),
       bslib::card_body(
         fill = TRUE, padding = 0,
         ggiraph::girafeOutput("bw_plot", width = "100%", height = "100%")

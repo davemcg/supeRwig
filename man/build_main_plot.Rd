@@ -14,8 +14,7 @@ build_main_plot(
   w_start,
   w_end,
   overlap_factor,
-  color_var,
-  summary_type
+  color_var
 )
 }
 \description{
