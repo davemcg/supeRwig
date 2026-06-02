@@ -4,13 +4,19 @@
 \alias{read_region_junctions}
 \title{Read junctions overlapping a region for a sample subset}
 \usage{
-read_region_junctions(ctx, chr, w_start, w_end, samples, min_reads)
+read_region_junctions(
+  ctx,
+  chr,
+  w_start,
+  w_end,
+  samples,
+  min_psi5 = 0,
+  min_psi3 = 0
+)
 }
 \description{
-Filters in-memory rowData first (cheap), then performs ONE HDF5 read
-of the resulting (junction x sample) submatrix. \code{start >= w_start & end <= w_end} is fully-contained (matching how the SE was built);
-switch to overlap if you want junctions whose anchors sit outside
-the window too.
+Filters in-memory rowData first (cheap), then performs a dual HDF5 read
+of both the PSI and raw count (junction x sample) submatrices. \code{start >= w_start & end <= w_end} is fully-contained (matching how the SE was built).
 }
 \details{
 Empty data.tables are returned with the correct schema so callers

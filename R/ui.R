@@ -15,18 +15,22 @@ build_sidebar <- function(ctx) {
   meta_cols <- colnames(ctx$eiad_meta)
   
   # Junction panel only appears when a junction SE was supplied.
+  # Junction panel updated for dual simultaneous filtering
   junction_panel <- if (!is.null(ctx$sj_se)) {
     bslib::accordion_panel(
       "Junction Track",
       shiny::checkboxInput("show_junctions",
                            "Show per-sample junction track",
                            value = FALSE),
-      shiny::numericInput("min_junc_reads",
-                          "Min reads per junction:",
-                          value = 5, min = 5, step = 1),
+      shiny::numericInput("min_psi5",
+                          "Min PSI5 % Cutoff (5' Donor):",
+                          value = 1, min = 0.01, max = 100, step = 0.1),
+      shiny::numericInput("min_psi3",
+                          "Min PSI3 % Cutoff (3' Acceptor):",
+                          value = 1, min = 0.01, max = 100, step = 0.1),
       shiny::helpText(
-        "Junctions appear as straight horizontal lines in a narrow ",
-        "band just below each wiggle."
+        "Junctions appear as straight horizontal lines. Traces must pass ",
+        "both cutoffs to be displayed."
       )
     )
   } else NULL
@@ -45,7 +49,7 @@ build_sidebar <- function(ctx) {
       "facet_group", "Facet / Group By:",
       choices  = meta_cols,
       selected = intersect(c("Tissue", "Sub_Tissue", "Source",
-                             "Origin", "Perturbation"),
+                             "Age", "Perturbation"),
                            meta_cols),
       multiple = TRUE
     ),

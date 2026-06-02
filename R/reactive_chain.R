@@ -29,7 +29,8 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
       min_expr        = input$min_expr,
       bin_size        = input$bin_size,
       show_junctions  = !is.null(ctx$sj_se) && isTRUE(input$show_junctions),
-      min_junc_reads  = as.integer(input$min_junc_reads %||% 5L)
+      min_psi5        = as.numeric(input$min_psi5 %||% 0.0),
+      min_psi3        = as.numeric(input$min_psi3 %||% 0.0)
     )
   })
   
@@ -79,14 +80,17 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
   junctions_raw_r <- shiny::reactive({
     g <- gated_r()
     if (!g$show_junctions) return(NULL)
-    cs <- cpm_samples_r()
+    cs <- cpm_samples_r()  
     read_region_junctions(ctx, g$chr, g$start, g$end,
-                          samples = cs$samples, min_reads = g$min_junc_reads)
+                          samples = cs$samples, 
+                          min_psi5 = g$min_psi5,
+                          min_psi3 = g$min_psi3) 
   }) |> shiny::bindCache(
     gated_r()$show_junctions,
     cpm_samples_r()$samples,
     gated_r()$chr, gated_r()$start, gated_r()$end,
-    gated_r()$min_junc_reads
+    gated_r()$min_psi5,
+    gated_r()$min_psi3
   )
   
   annotation_r <- shiny::reactive({
@@ -112,7 +116,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
   plot_data_r <- shiny::reactive({
     g  <- gated_r()
     cs <- cpm_samples_r()
-    junc_band <- if (g$show_junctions) 0.4 else 0
+    junc_band <- if (g$show_junctions) 0.45 else 0
     
     # Time the BigWig fetch externally — captures cache hits (~0 s)
     # as well as cold reads.
@@ -133,7 +137,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     raw <- junctions_raw_r()
     if (is.null(raw) || nrow(raw) == 0) return(NULL)
     attach_junction_positions(raw, plot_data_r()$unique_samples,
-                              junc_band = 0.4)
+                              junc_band = 0.45)
   })
   
   minimap_r <- shiny::reactive({
@@ -174,10 +178,22 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     )
     timings_rv$main_plot <- as.numeric(Sys.time() - t_mp)
     
+    # Calculate transcript structural layout direction (5' vs 3')
+    g_strand <- "+"
+    if (!is.null(g$target_gene) && !is.null(ctx$anno_dt)) {
+      df_sub <- ctx$anno_dt[type == "gene" & gene_name == g$target_gene, strand]
+      if (length(df_sub) > 0) g_strand <- as.character(df_sub[1])
+    }
+    gene_oriented_label <- if (g_strand == "-") {
+      paste0(g$target_gene, " (3' ← 5')")
+    } else {
+      paste0(g$target_gene, " (5' → 3')")
+    }
+    
     list(
       plot            = main_plot,
       facet_cols      = g$facet_group,
-      target_gene     = g$target_gene,
+      target_gene     = gene_oriented_label, # Inject direction string into UI label
       auto_height     = dims$main_px,
       plot_minimap    = mm$plot,
       minimap_px      = dims$minimap_px,

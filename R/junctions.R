@@ -1,67 +1,91 @@
 #' Read junctions overlapping a region for a sample subset
 #'
-#' Filters in-memory rowData first (cheap), then performs ONE HDF5 read
-#' of the resulting (junction x sample) submatrix. `start >= w_start &
-#' end <= w_end` is fully-contained (matching how the SE was built);
-#' switch to overlap if you want junctions whose anchors sit outside
-#' the window too.
+#' Filters in-memory rowData first (cheap), then performs a dual HDF5 read
+#' of both the PSI and raw count (junction x sample) submatrices. `start >= w_start &
+#' end <= w_end` is fully-contained (matching how the SE was built).
 #'
 #' Empty data.tables are returned with the correct schema so callers
 #' can `nrow() == 0` rather than NULL-check.
 #'
 #' @keywords internal
 read_region_junctions <- function(ctx, chr, w_start, w_end, samples,
-                                  min_reads) {
+                                  min_psi5 = 0, min_psi3 = 0) {
   empty <- data.table::data.table(
     jid          = character(0),
     sample       = character(0),
-    count        = integer(0),
+    count        = numeric(0),
+    raw_count    = integer(0),
+    psi5         = numeric(0),
+    psi3         = numeric(0),
     start        = integer(0),
     end          = integer(0),
     strand       = character(0),
     annot        = integer(0),
-    strand_annot = character(0)
+    strand_annot = character(0),
+    cluster_5    = character(0),
+    cluster_3    = character(0)
   )
   if (is.null(ctx$sj_se)) return(empty)
   
-  # rowData has columns named chr/start/end that collide with the
-  # function args of the same name. Rename locals so data.table's
-  # NSE finds the column on the LHS and the variable on the RHS,
-  # avoiding the fragile `..chr` prefix (which is documented for `j`
-  # but not reliably supported in `i` across data.table versions).
   rd <- ctx$sj_row_meta
   q_chr   <- chr
   q_start <- w_start
   q_end   <- w_end
-  hits <- rd[chr == q_chr & start >= q_start & end <= q_end]
+  
+  # CHANGE: Allow partially overlapping junctions by checking interval intersection
+  hits <- rd[chr == q_chr & start <= q_end & end >= q_start]
   if (nrow(hits) == 0) return(empty)
   
   sample_cols <- ctx$sj_col_for_sample[samples]
   sample_cols <- sample_cols[!is.na(sample_cols)]
   if (length(sample_cols) == 0) return(empty)
   
-  m <- as.matrix(
-    SummarizedExperiment::assay(ctx$sj_se, "counts")[hits$row_idx,
-                                                     sample_cols,
-                                                     drop = FALSE]
-  )
-  rownames(m) <- hits$jid
-  colnames(m) <- names(sample_cols)
+  # Fetch BOTH fractional splice usage matrix values
+  m_psi5 <- as.matrix(SummarizedExperiment::assay(ctx$sj_se, "psi5")[hits$row_idx, sample_cols, drop = FALSE])
+  m_psi3 <- as.matrix(SummarizedExperiment::assay(ctx$sj_se, "psi3")[hits$row_idx, sample_cols, drop = FALSE])
+  rownames(m_psi5) <- hits$jid; colnames(m_psi5) <- names(sample_cols)
+  rownames(m_psi3) <- hits$jid; colnames(m_psi3) <- names(sample_cols)
   
-  m_dt <- data.table::as.data.table(m, keep.rownames = "jid")
-  long <- data.table::melt(m_dt, id.vars = "jid",
-                           variable.name = "sample",
-                           value.name    = "count")
-  long[, sample := as.character(sample)]
-  long <- long[count >= min_reads]
+  dt_psi5 <- data.table::as.data.table(m_psi5, keep.rownames = "jid")
+  long_psi5 <- data.table::melt(dt_psi5, id.vars = "jid", variable.name = "sample", value.name = "psi5_val")
+  
+  dt_psi3 <- data.table::as.data.table(m_psi3, keep.rownames = "jid")
+  long_psi3 <- data.table::melt(dt_psi3, id.vars = "jid", variable.name = "sample", value.name = "psi3_val")
+  
+  long_psi <- merge(long_psi5, long_psi3, by = c("jid", "sample"))
+  long_psi[, sample := as.character(sample)]
+  
+  if ("counts" %in% SummarizedExperiment::assayNames(ctx$sj_se)) {
+    m_cts <- as.matrix(SummarizedExperiment::assay(ctx$sj_se, "counts")[hits$row_idx, sample_cols, drop = FALSE])
+    rownames(m_cts) <- hits$jid; colnames(m_cts) <- names(sample_cols)
+    m_cts_dt <- data.table::as.data.table(m_cts, keep.rownames = "jid")
+    long_cts <- data.table::melt(m_cts_dt, id.vars = "jid", variable.name = "sample", value.name = "raw_count")
+    long_cts[, sample := as.character(sample)]
+    long <- merge(long_psi, long_cts, by = c("jid", "sample"))
+  } else {
+    long <- long_psi
+    long[, raw_count := NA_integer_]
+  }
+  
+  # Convert 0-10000 scaled integers to UI percentages (0-100%)
+  long[, psi5 := psi5_val / 100]
+  long[, psi3 := psi3_val / 100]
+  
+  # Enforce strict AND filtration boundaries AND strip absolute zeros
+  if (!all(is.na(long$raw_count))) {
+    long <- long[(psi5 >= min_psi5 & psi3 >= min_psi3) & raw_count > 0]
+  } else {
+    long <- long[psi5 >= min_psi5 & psi3 >= min_psi3]
+  }
+  
   if (nrow(long) == 0) return(empty)
   
-  long <- merge(long,
-                hits[, .(jid, start, end, strand, annot)],
-                by = "jid")
+  # Set line thickness priority ordering to whichever value is higher
+  long[, count := pmax(psi5, psi3)]
   
-  long[, strand_annot := paste0(strand, "/",
-                                ifelse(annot == 1L, "annot", "novel"))]
+  extra_metadata <- intersect(c("SYMBOL", "cluster_5", "cluster_3"), colnames(hits))
+  long <- merge(long, hits[, c("jid", "start", "end", "strand", "annot", extra_metadata), with = FALSE], by = "jid")
+  long[, strand_annot := paste0(strand, "/", ifelse(annot == 1L, "annot", "novel"))]
   long
 }
 
@@ -85,10 +109,7 @@ junction_palette <- function() {
 #'
 #' Junctions are placed in the thin band between each sample's
 #' baseline (`local_idx`) and the shifted wiggle zero line
-#' (`local_idx + junc_band`). Within that band, junctions are
-#' stacked into a few sub-rows ordered by read count; extras wrap
-#' onto earlier sub-rows (lowest-count first, so the dominant
-#' junctions stay on their own line).
+#' (`local_idx + junc_band`).
 #'
 #' @keywords internal
 attach_junction_positions <- function(junctions, unique_samples,
@@ -104,14 +125,34 @@ attach_junction_positions <- function(junctions, unique_samples,
   junc[, sub_idx := sub_idx %% n_visible]
   junc[, junc_y  := local_idx + 0.04 + sub_idx * sub_spacing]
   
-  #junc[, junc_lw      := pmin(2.2, 0.4 + log10(count + 1) * 0.7)]
   junc[, junc_lw := 0.4]
+  
+  # ---- Vectorized Rich Tooltip Generation (Updated for Localized Clusters) ----
   junc[, junc_tooltip := paste0(
     "<b>Junction:</b> ", jid,
     "<br><b>Sample:</b> ",  sample,
-    "<br><b>Reads:</b> ",   count,
+    "<br><b>PSI5 (5' Donor Focus):</b> ", round(psi5, 2), "%",
+    "<br><b>PSI3 (3' Acceptor Focus):</b> ", round(psi3, 2), "%"
+  )]
+  
+  if ("raw_count" %in% colnames(junc)) {
+    junc[, junc_tooltip := paste0(junc_tooltip, "<br><b>Raw Count:</b> ", 
+                                  data.table::fifelse(is.na(raw_count), "N/A", as.character(raw_count)))]
+  }
+  
+  # Display both the 5' and 3' 10bp window clusters
+  if ("cluster_5" %in% colnames(junc)) {
+    junc[, junc_tooltip := paste0(junc_tooltip, "<br><b>5' Cluster (Donor):</b> ", cluster_5)]
+  } 
+  if ("cluster_3" %in% colnames(junc)) {
+    junc[, junc_tooltip := paste0(junc_tooltip, "<br><b>3' Cluster (Acceptor):</b> ", cluster_3)]
+  } 
+  
+  junc[, junc_tooltip := paste0(
+    junc_tooltip,
     "<br><b>Strand:</b> ",  strand,
     "<br><b>Status:</b> ",  ifelse(annot == 1L, "annotated", "novel")
   )]
+  
   junc
 }

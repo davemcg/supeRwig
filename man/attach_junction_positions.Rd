@@ -9,9 +9,6 @@ attach_junction_positions(junctions, unique_samples, junc_band = 0.25)
 \description{
 Junctions are placed in the thin band between each sample's
 baseline (\code{local_idx}) and the shifted wiggle zero line
-(\code{local_idx + junc_band}). Within that band, junctions are
-stacked into a few sub-rows ordered by read count; extras wrap
-onto earlier sub-rows (lowest-count first, so the dominant
-junctions stay on their own line).
+(\code{local_idx + junc_band}).
 }
 \keyword{internal}

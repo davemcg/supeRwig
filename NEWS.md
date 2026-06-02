@@ -1,3 +1,6 @@
+# 0.2.5
+Tweaked the input splice junction database format to calculate psi3' and psi5'. Adjusted app to read this new format.
+
 # 0.2.4
 Timing info added to tooltip (next to Coverage (cpm) in the wiggle card)
 
