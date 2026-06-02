@@ -105,29 +105,65 @@ junction_palette <- function() {
   )
 }
 
-#' Attach y-positions and visual attrs to junctions
-#'
-#' Junctions are placed in the thin band between each sample's
-#' baseline (`local_idx`) and the shifted wiggle zero line
-#' (`local_idx + junc_band`).
+#' Attach y-positions and visual attrs to junctions with Interval Packing
 #'
 #' @keywords internal
 attach_junction_positions <- function(junctions, unique_samples,
-                                      junc_band = 0.25) {
+                                      junc_band = 0.65) {
   if (nrow(junctions) == 0) return(junctions)
   
   junc <- merge(junctions, unique_samples, by = "sample")
-  data.table::setorder(junc, combined_facet, local_idx, -count)
-  junc[, sub_idx := seq_len(.N) - 1L, by = .(combined_facet, local_idx)]
   
-  sub_spacing <- 0.045
+  # Helper function to compute optimal layout tracks using greedy interval packing
+  pack_lanes <- function(start_vec, end_vec) {
+    if (length(start_vec) == 0) return(integer(0))
+    
+    # Sort left-to-right by start coordinate
+    ord <- order(start_vec)
+    s_sorted <- start_vec[ord]
+    e_sorted <- end_vec[ord]
+    
+    # Track the rightmost coordinate mapped to each lane
+    lane_ends <- numeric(0)
+    assigned_lanes <- integer(length(start_vec))
+    
+    # 25bp visual buffer prevents adjacent lines from colliding
+    buffer <- 25L 
+    
+    for (i in seq_along(s_sorted)) {
+      placed <- FALSE
+      # Find the first available lane that ends before this junction starts
+      for (l in seq_along(lane_ends)) {
+        if (s_sorted[i] > (lane_ends[l] + buffer)) {
+          lane_ends[l] <- e_sorted[i]
+          assigned_lanes[ord[i]] <- l - 1L
+          placed <- TRUE
+          break
+        }
+      }
+      # If all current lanes are blocked by overlapping junctions, open a new lane
+      if (!placed) {
+        lane_ends <- c(lane_ends, e_sorted[i])
+        assigned_lanes[ord[i]] <- length(lane_ends) - 1L
+      }
+    }
+    return(assigned_lanes)
+  }
+  
+  # Calculate packed lanes independently per sample track
+  junc[, sub_idx := pack_lanes(start, end), by = .(combined_facet, local_idx)]
+  
+  # --- Inverted vertical layout --------
+  sub_spacing <- 0.060  # Snugged up line spacing slightly for better density
   n_visible   <- max(1L, as.integer(floor((junc_band - 0.08) / sub_spacing)))
   junc[, sub_idx := sub_idx %% n_visible]
-  junc[, junc_y  := local_idx + 0.04 + sub_idx * sub_spacing]
+  
+  # Instead of adding to floor, subtract downward from the wiggle track baseline
+  junc[, junc_y  := local_idx + junc_band - 0.07 - (sub_idx * sub_spacing)]
   
   junc[, junc_lw := 0.4]
   
-  # ---- Vectorized Rich Tooltip Generation (Updated for Localized Clusters) ----
+  # ---- Vectorized Rich Tooltip Generation  ----
   junc[, junc_tooltip := paste0(
     "<b>Junction:</b> ", jid,
     "<br><b>Sample:</b> ",  sample,
@@ -140,7 +176,6 @@ attach_junction_positions <- function(junctions, unique_samples,
                                   data.table::fifelse(is.na(raw_count), "N/A", as.character(raw_count)))]
   }
   
-  # Display both the 5' and 3' 10bp window clusters
   if ("cluster_5" %in% colnames(junc)) {
     junc[, junc_tooltip := paste0(junc_tooltip, "<br><b>5' Cluster (Donor):</b> ", cluster_5)]
   } 

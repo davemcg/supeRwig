@@ -1,3 +1,6 @@
+# 0.2.6
+Junction spacing is now linear (unless overlapping on x axis).
+
 # 0.2.5
 Tweaked the input splice junction database format to calculate psi3' and psi5'. Adjusted app to read this new format.
 

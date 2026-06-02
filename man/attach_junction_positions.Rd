@@ -2,13 +2,11 @@
 % Please edit documentation in R/junctions.R
 \name{attach_junction_positions}
 \alias{attach_junction_positions}
-\title{Attach y-positions and visual attrs to junctions}
+\title{Attach y-positions and visual attrs to junctions with Interval Packing}
 \usage{
-attach_junction_positions(junctions, unique_samples, junc_band = 0.25)
+attach_junction_positions(junctions, unique_samples, junc_band = 0.65)
 }
 \description{
-Junctions are placed in the thin band between each sample's
-baseline (\code{local_idx}) and the shifted wiggle zero line
-(\code{local_idx + junc_band}).
+Attach y-positions and visual attrs to junctions with Interval Packing
 }
 \keyword{internal}
