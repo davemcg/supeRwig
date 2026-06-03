@@ -1,3 +1,6 @@
+# 0.2.7
+Thicker lines, download functionality. Color Appris/Ensembl primary transcript in red. 
+
 # 0.2.6
 Junction spacing is now linear (unless overlapping on x axis).
 

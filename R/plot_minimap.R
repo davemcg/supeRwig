@@ -19,16 +19,17 @@ build_minimap <- function(region_anno, tx_base, tx_exons, has_transcripts,
     ggplot2::geom_segment(
       data = tx_base,
       ggplot2::aes(x = draw_start, xend = draw_end,
-                   y = tx_idx, yend = tx_idx),
-      color = "black",
+                   y = tx_idx, yend = tx_idx,
+                   color = is_principal),
       arrow = ggplot2::arrow(length = ggplot2::unit(0.08, "inches"),
                              type = "closed")
     ) +
     ggplot2::geom_rect(
       data = tx_exons,
+      # FIX: Added fill = is_principal inside the aesthetic mapping
       ggplot2::aes(xmin = start - 0.5, xmax = end + 0.5,
-                   ymin = tx_idx - 0.25, ymax = tx_idx + 0.25),
-      fill = "black"
+                   ymin = tx_idx - 0.25, ymax = tx_idx + 0.25,
+                   color = is_principal, fill = is_principal)
     ) +
     ggplot2::geom_text(
       data = tx_base,
@@ -49,13 +50,20 @@ build_minimap <- function(region_anno, tx_base, tx_exons, has_transcripts,
       axis.text.x  = ggplot2::element_blank(),
       axis.ticks.x = ggplot2::element_blank()
     ) +
-    ggplot2::labs(x = NULL, y = NULL)
+    ggplot2::labs(x = NULL, y = NULL) +
+    ggplot2::scale_color_manual(values = c("TRUE" = "firebrick3", "FALSE" = "gray25"), guide = "none") +
+    ggplot2::scale_fill_manual(values = c("TRUE" = "firebrick1", "FALSE" = "grey25"), guide = "none")
+  
+  meta_cols <- intersect(
+    c("tag", "transcript_type"), 
+    colnames(tx_base)
+  )
+  target_cols <- c("tx_label", "seqnames", "start", "end", "strand", "tx_idx", meta_cols)
   
   list(
     plot          = p,
     num_tx        = length(unique(region_anno$tx_idx)),
-    tx_hover_info = tx_base[, .(tx_label, seqnames, start, end, strand,
-                                tx_idx)]
+    tx_hover_info = tx_base[, target_cols, with = FALSE]
   )
 }
 

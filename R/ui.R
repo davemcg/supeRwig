@@ -107,8 +107,17 @@ build_sidebar <- function(ctx) {
           )
         )
       ),
-      # junction_panel goes last and only when present
-      if (!is.null(junction_panel)) list(junction_panel) else list()
+      # junction_panel goes next if present
+      if (!is.null(junction_panel)) list(junction_panel) else list(),
+      # --- EXPORT ---
+      list(
+        bslib::accordion_panel(
+          "Export Options",
+          shiny::p("Download data and code to reproduce and customize this plot locally:"),
+          shiny::downloadButton("download_data", "Download Plot Data (.rds)", class = "btn-outline-secondary w-100 mb-2"),
+          shiny::downloadButton("download_script", "Download R Script (.R)", class = "btn-outline-secondary w-100")
+        )
+      )
     )),
     shiny::actionButton("plot_btn", "Generate Plot",
                         class = "btn-primary w-100")

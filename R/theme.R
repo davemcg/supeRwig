@@ -21,7 +21,9 @@ theme_panel_only <- function() {
 cat_palette <- function(levels) {
   n <- length(levels)
   if (n == 0) return(character(0))
-  pal <- c(pals::cols25(), pals::polychrome(),
-           pals::glasbey(), pals::okabe())[seq_len(n)]
+  pal <- c(pals::cols25()[-c(6,7,13,14)], 
+           pals::polychrome()[-c(1,2,20)],
+           pals::glasbey(),
+           pals::okabe())[seq_len(n)]
   setNames(unname(pal), levels)
 }

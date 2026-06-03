@@ -127,8 +127,8 @@ attach_junction_positions <- function(junctions, unique_samples,
     lane_ends <- numeric(0)
     assigned_lanes <- integer(length(start_vec))
     
-    # 25bp visual buffer prevents adjacent lines from colliding
-    buffer <- 25L 
+    # 200bp visual buffer prevents adjacent lines from colliding
+    buffer <- 200L 
     
     for (i in seq_along(s_sorted)) {
       placed <- FALSE
@@ -161,7 +161,7 @@ attach_junction_positions <- function(junctions, unique_samples,
   # Instead of adding to floor, subtract downward from the wiggle track baseline
   junc[, junc_y  := local_idx + junc_band - 0.07 - (sub_idx * sub_spacing)]
   
-  junc[, junc_lw := 0.4]
+  junc[, junc_lw := 0.8] # <- sets junction line thickness
   
   # ---- Vectorized Rich Tooltip Generation  ----
   junc[, junc_tooltip := paste0(

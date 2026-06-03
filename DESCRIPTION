@@ -1,6 +1,6 @@
 Package: supeRwig
 Title: Interactive BigWig Coverage Viewer for SummarizedExperiment Cohorts
-Version: 0.2.6
+Version: 0.2.7
 Authors@R: person("David", "McGaughey", email = "mcgaughey@gmail.com",
                   role = c("aut", "cre"))
 Description: A Shiny app for browsing per-sample BigWig coverage across

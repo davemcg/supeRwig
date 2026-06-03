@@ -198,7 +198,14 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
       plot_minimap    = mm$plot,
       minimap_px      = dims$minimap_px,
       tx_hover_info   = mm$tx_hover_info,
-      has_transcripts = a$has_transcripts
+      has_transcripts = a$has_transcripts,
+      # --- DATA EXPORT ---
+      gated_params    = g,
+      plot_data       = pd$plot_data,
+      exon_highlights = a$exon_highlights,
+      junctions       = junctions_positioned_r(),
+      bed_highlights  = bed_in_region_r(),
+      color_var       = color_var
     )
   })
 }

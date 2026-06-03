@@ -5,13 +5,33 @@ subset_region_annotation <- function(anno_dt, chr, w_start, w_end) {
   has_tx <- nrow(region_anno) > 0
   
   if (has_tx) {
-    region_anno[, `:=`(tx_label = paste0(gene_name, " - ", transcript_id), tx_idx = as.numeric(as.factor(paste0(gene_name, " - ", transcript_id))))]
+    region_anno[, `:=`(tx_label = paste0(gene_name, " - ", transcript_id), 
+                       tx_idx = as.numeric(as.factor(paste0(gene_name, " - ", transcript_id))))]
+    
+    # Find transcript IDs that explicitly contain the principal tag
+    principal_ids <- character(0)
+    if ("tag" %in% colnames(region_anno)) {
+      principal_ids <- unique(region_anno[grepl("GENCODE_Primary", tag), transcript_id])
+    } else if ("appris" %in% colnames(region_anno)) {
+      principal_ids <- unique(region_anno[grepl("appris_principal_1", appris), transcript_id])
+    } 
+    
+    # Broadcast flag to both the transcript lines and exon blocks
+    region_anno[, is_principal := transcript_id %in% principal_ids]
+    # ---------------------------------
+    
     exon_hi <- data.table::as.data.table(GenomicRanges::reduce(GenomicRanges::makeGRangesFromDataFrame(region_anno[type == "exon"])))
   } else {
     exon_hi <- tx_base <- tx_exons <- data.table::data.table()
   }
   
-  list(region_anno = region_anno, tx_base = region_anno[type == "transcript"], tx_exons = region_anno[type == "exon"], exon_highlights = exon_hi, has_transcripts = has_tx)
+  list(
+    region_anno = region_anno, 
+    tx_base = region_anno[type == "transcript"], 
+    tx_exons = region_anno[type == "exon"], 
+    exon_highlights = exon_hi, 
+    has_transcripts = has_tx
+  )
 }
 
 #' @keywords internal
