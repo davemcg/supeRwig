@@ -10,7 +10,7 @@ supeRwig(
   anno_fst,
   sj_se_dir = NULL,
   bigwig_ext = ".bw",
-  n_workers = max(1L, parallel::detectCores() - 1L)
+  n_workers = 2
 )
 }
 \arguments{

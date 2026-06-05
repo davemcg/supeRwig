@@ -71,7 +71,7 @@ build_sidebar <- function(ctx) {
           shiny::hr(class = "my-2"),
           shiny::numericInput("max_samples",
                               "Max Samples per Study (0 = All):",
-                              value = 4, min = 0)
+                              value = 3, min = 0)
         ),
         bslib::accordion_panel(
           "Plot Settings",

@@ -16,7 +16,7 @@
 supeRwig <- function(se_dir, bigwig_base, anno_fst,
                      sj_se_dir = NULL,
                      bigwig_ext = ".bw",
-                     n_workers = max(1L, parallel::detectCores() - 1L)) {
+                     n_workers = 2) {
   ctx <- build_context(
     se_dir      = se_dir,
     bigwig_base = bigwig_base,

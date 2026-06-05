@@ -66,7 +66,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     cs <- cpm_samples_r()
     bp_wide <- g$end - g$start
     b_size  <- if (g$bin_size > 0) g$bin_size
-    else as.integer(max(1, bp_wide / 1000)) # bigger values (e.g.2000) increases the resolution of wiggle plot (and increases plotting time)
+    else as.integer(max(1, bp_wide / 750)) # bigger values (e.g.2000) increases the resolution of wiggle plot (and increases plotting time)
     n_bins  <- as.integer(max(1, ceiling(bp_wide / b_size)))
     read_region_bigwigs(cs$samples, ctx$bw_file_map,
                         g$chr, g$start, g$end,
