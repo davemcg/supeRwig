@@ -10,9 +10,16 @@ build_context <- function(se_dir, bigwig_base, anno_fst, bigwig_ext, n_workers, 
 
 #' @keywords internal
 register_bp_backend <- function(n_workers) {
-  bp <- if (.Platform$OS.type == "windows") BiocParallel::SnowParam(workers = n_workers, type = "SOCK")
-  else BiocParallel::MulticoreParam(workers = n_workers)
-  BiocParallel::register(bp); bp
+  is_mac_or_win <- .Platform$OS.type == "windows" || Sys.info()["sysname"] == "Darwin"
+  
+  bp <- if (is_mac_or_win) {
+    BiocParallel::SnowParam(workers = n_workers, type = "SOCK")
+  } else {
+    BiocParallel::MulticoreParam(workers = n_workers)
+  }
+  
+  BiocParallel::register(bp)
+  bp
 }
 
 #' @keywords internal

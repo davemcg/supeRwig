@@ -11,7 +11,7 @@ subset_region_annotation <- function(anno_dt, chr, w_start, w_end) {
     # Find transcript IDs that explicitly contain the principal tag
     principal_ids <- character(0)
     if ("tag" %in% colnames(region_anno)) {
-      principal_ids <- unique(region_anno[grepl("GENCODE_Primary", tag), transcript_id])
+      principal_ids <- unique(region_anno[grepl("GENCODE_Primary|CCDS", tag), transcript_id])
     } else if ("appris" %in% colnames(region_anno)) {
       principal_ids <- unique(region_anno[grepl("appris_principal_1", appris), transcript_id])
     } 
