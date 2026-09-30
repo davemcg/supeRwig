@@ -369,6 +369,14 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     )
   })
   
+  heatmap_dimensions_r <- shiny::reactive({
+    pd <- plot_data_r()
+    compute_heatmap_dimensions(
+      nrow(pd$unique_samples),
+      length(unique(pd$unique_samples$combined_facet))
+    )
+  })
+  
   # Final bundle consumed by register_outputs
   shiny::reactive({
     g         <- gated_r()
@@ -396,18 +404,13 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
       color_var       = color_var
     )
     
-    # 2. Build ComplexHeatmap Object
-    heatmap_plot <- build_heatmap_from_data(
-      bw_dt            = bw,
-      meta_cur         = cs$meta,
-      facet_cols       = g$facet_group,
-      anno_res         = a,
-      chr              = g$chr,
-      w_start          = g$start,
-      w_end            = g$end,
-      scale_rows       = isTRUE(input$scale_rows_hm),
-      show_transcripts = TRUE,
-      show_column_axis = TRUE
+    # 2. Build heatmap ggplot (shares plot_data with the wiggle for exact alignment)
+    heatmap_plot <- build_heatmap_ggplot(
+      plot_data  = pd$plot_data,
+      scale_rows = isTRUE(input$scale_rows_hm),
+      chr        = g$chr,
+      w_start    = g$start,
+      w_end      = g$end
     )
     
     timings_rv$main_plot <- as.numeric(Sys.time() - t_mp)
@@ -429,6 +432,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
       facet_cols      = g$facet_group,
       target_gene     = gene_oriented_label,
       auto_height     = dims$main_px,
+      heatmap_height  = heatmap_dimensions_r()$main_px,
       plot_minimap    = mm$plot,
       minimap_px      = dims$minimap_px,
       tx_hover_info   = mm$tx_hover_info,
@@ -506,7 +510,7 @@ build_minimap <- function(region_anno, tx_base, tx_exons, has_transcripts,
     theme_panel_only() +
     ggplot2::theme(
       axis.title.x = ggplot2::element_blank(),
-      axis.text.x  = ggplot2::element_blank(),
+      axis.text.x  =  ggplot2::element_blank(),
       axis.ticks.x = ggplot2::element_blank()
     ) +
     ggplot2::labs(x = NULL, y = NULL) +
@@ -563,6 +567,20 @@ compute_plot_dimensions <- function(n_samples, n_facets, n_tx,
   list(main_px = main_px, minimap_px = minimap_px)
 }
 
+
+#' Pixel height for the raster heatmap
+#'
+#' Rows are single raster bands (no amplitude to accommodate, unlike the
+#' wiggle), so per-sample height is much smaller. No junction term: the
+#' heatmap doesn't draw a junction track.
+#'
+#' @keywords internal
+compute_heatmap_dimensions <- function(n_samples, n_facets) {
+  strip_px  <- n_facets * 15    # top facet strips (one per group)
+  rows_px   <- n_samples * 6    # compact raster bands
+  chrome_px <- 100              # title + bottom legend + axis
+  list(main_px = max(300L, as.integer(rows_px + strip_px + chrome_px)))
+}
 
 
 #' Subset annotation to features overlapping the window
@@ -670,6 +688,17 @@ junction_palette <- function() {
     "*/annot" = "seagreen4",
     "*/novel" = "seagreen1"
   )
+}
+
+#' @keywords internal
+magma_palette <- function(n = 256) {
+  if (requireNamespace("viridisLite", quietly = TRUE)) {
+    viridisLite::magma(n)
+  } else if (requireNamespace("viridis", quietly = TRUE)) {
+    viridis::magma(n)
+  } else {
+    grDevices::hcl.colors(n, palette = "Magma")
+  }
 }
 
 #' Attach y-positions and visual attrs to junctions with Interval Packing
@@ -931,93 +960,83 @@ plot_region_heatmap <- function(ctx,
   ht
 }
 
-#' Build ComplexHeatmap object directly from pre-loaded reactive data
+#' Build the coverage heatmap as a ggplot (raster), aligned to the wiggle/minimap
+#'
+#' Consumes the same `plot_data` produced by `build_plot_data()` so row order,
+#' faceting, and bin x-positions match the wiggle view exactly. Uses the same
+#' x-scale + coord as `build_main_plot()`/`build_minimap()` so all three views
+#' share one coordinate system.
+#'
 #' @keywords internal
-build_heatmap_from_data <- function(bw_dt, meta_cur, facet_cols, anno_res,
-                                    chr, w_start, w_end,
-                                    scale_rows = TRUE,
-                                    show_transcripts = FALSE,
-                                    show_column_axis = TRUE,
-                                    title = NULL) {
-  if (length(facet_cols) == 0) { meta_cur$dummy_facet <- "All Samples"; facet_cols <- "dummy_facet" }
-  
-  meta_unique <- unique(meta_cur)[!duplicated(sample_accession)]
-  meta_unique[, combined_facet := do.call(paste, c(.SD, sep = " - ")), .SDcols = facet_cols]
-  
-  dt_merged <- merge(bw_dt, meta_unique, by.x = "sample", by.y = "sample_accession", all.x = TRUE)
-  
-  mat_dt <- data.table::dcast(
-    dt_merged,
-    sample ~ binned_pos,
-    value.var = "value",
-    fun.aggregate = mean,
-    fill = 0
-  )
-  
-  mat_samples <- mat_dt$sample
-  mat <- as.matrix(mat_dt[, -1, with = FALSE])
-  rownames(mat) <- mat_samples
-  
-  col_positions <- as.numeric(colnames(mat))
-  col_ord <- order(col_positions)
-  mat <- mat[, col_ord, drop = FALSE]
+build_heatmap_ggplot <- function(plot_data, scale_rows, chr, w_start, w_end, title = NULL) {
+  pd <- data.table::copy(plot_data)
   
   if (isTRUE(scale_rows)) {
-    row_mins <- apply(mat, 1, min, na.rm = TRUE)
-    row_maxs <- apply(mat, 1, max, na.rm = TRUE)
-    row_range <- row_maxs - row_mins
-    row_range[row_range == 0 | is.na(row_range)] <- 1
-    mat <- (mat - row_mins) / row_range
-  }
-  
-  magma_colors <- if (requireNamespace("viridisLite", quietly = TRUE)) {
-    viridisLite::magma(100)
-  } else if (requireNamespace("viridis", quietly = TRUE)) {
-    viridis::magma(100)
+    pd[, fill_val := {
+      lo  <- min(value, na.rm = TRUE)
+      hi  <- max(value, na.rm = TRUE)
+      rng <- hi - lo
+      if (!is.finite(rng) || rng == 0) rep(0, .N) else (value - lo) / rng
+    }, by = sample]
+    legend_label <- "Min Max"
   } else {
-    grDevices::hcl.colors(100, palette = "Magma")
+    pd[, fill_val := value]
+    legend_label <- "Coverage"
   }
   
-  min_val <- min(mat, na.rm = TRUE)
-  max_val <- max(mat, na.rm = TRUE)
-  if (min_val == max_val) max_val <- min_val + 1
-  breaks <- seq(min_val, max_val, length.out = 100)
-  col_fun <- circlize::colorRamp2(breaks, magma_colors)
+  pd[, combined_facet := factor(
+    combined_facet,
+    levels = sort(unique(as.character(combined_facet)))
+  )]
   
-  sample_meta <- meta_unique[match(rownames(mat), sample_accession)]
-  row_split   <- sample_meta$combined_facet
+  # Extract 1 record per sample row for transparent interactive hover bands
+  sample_rows <- unique(pd[, .(sample, combined_facet, local_idx, static_tooltip)])
   
-  top_anno <- if (isTRUE(show_transcripts)) {
-    build_aligned_transcript_annotation(anno_res, w_start, w_end)
-  } else NULL
-  
-  bottom_anno <- if (isTRUE(show_column_axis)) {
-    build_coordinate_axis_annotation(w_start, w_end)
-  } else NULL
-  
-  legend_label <- if (isTRUE(scale_rows)) "Min Max" else "Coverage"
-  plot_title <- title %||% sprintf("Region: %s:%s-%s", chr, format(w_start, big.mark = ","), format(w_end, big.mark = ","))
-  
-  ComplexHeatmap::Heatmap(
-    matrix               = mat,
-    name                 = legend_label,
-    col                  = col_fun,
-    cluster_rows         = FALSE,
-    cluster_columns      = FALSE,
-    show_row_names       = FALSE,
-    show_column_names    = FALSE,
-    row_split            = row_split,
-    row_title_rot        = 0,
-    row_title_gp         = grid::gpar(fontsize = 9, fontface = "bold"),
-    row_names_gp         = grid::gpar(fontsize = 8),
-    #top_annotation       = top_anno,
-    bottom_annotation    = bottom_anno,
-    column_title         = plot_title,
-    column_title_gp      = grid::gpar(fontsize = 11, fontface = "bold"),
-    use_raster           = TRUE,
-    raster_resize_mat    = FALSE,
-    raster_quality       = 5
+  plot_title <- title %||% sprintf(
+    "Region: %s:%s-%s", chr,
+    format(w_start, big.mark = ","), format(w_end, big.mark = ",")
   )
+  
+  ggplot2::ggplot(pd, ggplot2::aes(x = plot_x, y = local_idx)) +
+    # 1. Fast bitmap raster for image values
+    ggplot2::geom_raster(ggplot2::aes(fill = fill_val), interpolate = FALSE) +
+    # 2. Transparent full-width interactive band per sample row
+    ggiraph::geom_rect_interactive(
+      data = sample_rows,
+      ggplot2::aes(
+        xmin = w_start, xmax = w_end,
+        ymin = local_idx - 0.5, ymax = local_idx + 0.5,
+        tooltip = static_tooltip, data_id = sample
+      ),
+      inherit.aes = FALSE,
+      fill = "white", alpha = 0.001
+    ) +
+    ggplot2::scale_fill_gradientn(colours = magma_palette(256), name = legend_label) +
+    ggplot2::scale_x_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE)) +
+    ggplot2::scale_y_continuous(breaks = NULL, expand = ggplot2::expansion(0)) +
+    ggplot2::coord_cartesian(xlim = c(w_start, w_end)) +
+    theme_panel_only() +
+    ggplot2::labs(title = plot_title, x = "Genomic Position", y = NULL) +
+    ggplot2::guides(
+      fill = ggplot2::guide_colorbar(
+        barwidth  = grid::unit(6, "lines"),
+        barheight = grid::unit(0.4, "lines"),
+        title.vjust = 0.85
+      )
+    ) +
+    ggforce::facet_col(ggplot2::vars(combined_facet), scales = "free_y", space = "free", shrink = TRUE) +
+    ggplot2::theme(
+      legend.position = "bottom",
+      # plot.title      = ggplot2::element_text(size = 9.5),
+      # axis.title.x    = ggplot2::element_text(size = 8.5),
+      # axis.text.x     = ggplot2::element_text(size = 8),
+      # legend.title    = ggplot2::element_text(size = 8),
+      # legend.text     = ggplot2::element_text(size = 7.5),
+      panel.spacing.y = grid::unit(0, "pt"),
+      strip.text      = ggplot2::element_text(
+        hjust = 0.5, #size = 8,
+        margin = ggplot2::margin(t = 1, r = 0, b = 1, l = 0, unit = "pt"))
+    )
 }
 
 

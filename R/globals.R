@@ -18,7 +18,7 @@ utils::globalVariables(c(
   "log_val", "tx_idx", "tx_label", "local_idx",
   "combined_facet", "static_tooltip", "line_color", "offset_y", "plot_x",
   "tooltip_text", "dummy_facet", "draw_start", "draw_end", "label_x",
-  ".SD", ".N", ".I", "is_principal",
+  ".SD", ".N", ".I", "is_principal", "fill_val",
   # junction-layer additions
   "jid", "annot", "count", "strand_annot",
   "sub_idx", "junc_y", "junc_lw", "junc_tooltip", "row_idx"

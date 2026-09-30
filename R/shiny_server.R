@@ -56,9 +56,13 @@ register_navigation_observers <- function(input, session, ctx, rv) {
     shiny::req(input$target_gene)
     g_rows <- ctx$anno_dt[type == "gene" & gene_name == input$target_gene]
     if (nrow(g_rows) > 0) {
+      pad <- 2000L  # 2kb padding
+      
       rv$home_chr   <- as.character(g_rows$seqnames)[1]
-      rv$home_start <- min(g_rows$start)
-      rv$home_end   <- max(g_rows$end)
+      # Subtract 2000bp from start (capped at 1) and add 2000bp to end
+      rv$home_start <- max(1L, as.integer(min(g_rows$start) - pad))
+      rv$home_end   <- as.integer(max(g_rows$end) + pad)
+      
       shiny::updateTextInput(
         session, "target_region",
         value = format_ucsc_region(rv$home_chr, rv$home_start, rv$home_end)
@@ -158,19 +162,44 @@ register_outputs <- function(input, output, session, plot_reactive, timings_rv) 
   output$main_plot_viewport <- shiny::renderUI({
     shiny::req(input$plot_mode)
     if (input$plot_mode == "heatmap") {
-      shiny::plotOutput("heatmap_plot", width = "100%", height = "650px")
+      ggiraph::girafeOutput("heatmap_plot", width = "100%", height = "100%")
     } else {
       ggiraph::girafeOutput("bw_plot", width = "100%", height = "100%")
     }
   })
   
-  # Heatmap Render Output
-  output$heatmap_plot <- shiny::renderPlot({
+  # Heatmap Render Output (ggiraph widget)
+  output$heatmap_plot <- ggiraph::renderGirafe({
     shiny::req(plot_reactive())
     res <- plot_reactive()
     shiny::req(res$heatmap_plot)
-    ComplexHeatmap::draw(res$heatmap_plot)
-  }, res = 96)
+    
+    target_px <- if (!is.na(input$plot_height) && input$plot_height > 0) {
+      input$plot_height
+    } else {
+      res$heatmap_height
+    }
+    
+    ggiraph::girafe(
+      ggobj      = res$heatmap_plot,
+      width_svg  = 16,
+      height_svg = target_px / 72,
+      options    = list(
+        ggiraph::opts_sizing(rescale = TRUE, width = 1),
+        ggiraph::opts_toolbar(saveaspng = FALSE, hidden = c("lasso_select", "lasso_deselect")),
+        ggiraph::opts_selection(type = "none"),
+        ggiraph::opts_tooltip(
+          css = paste0("background-color: rgba(255,255,255,0.95); ",
+                       "color: black; padding: 10px; border-radius: 5px; ",
+                       "box-shadow: 2px 2px 5px rgba(0,0,0,0.2); ",
+                       "font-family: Arial, sans-serif;"),
+          use_fill = FALSE
+        ),
+        ggiraph::opts_hover(css = "opacity: 0.8; stroke: #FF6700; stroke-width: 1px;")
+      )
+    )
+  })
+  
   
   output$minimap <- shiny::renderPlot(     { shiny::req(plot_reactive()); plot_reactive()$plot_minimap },
                                            width  = function() {
@@ -183,7 +212,7 @@ register_outputs <- function(input, output, session, plot_reactive, timings_rv) 
                                              if (is.null(h) || length(h) == 0 || is.na(h) || h == 0) return(150)
                                              h
                                            },
-                                           res = 72
+                                           res = 96
   )
   
   output$hover_info <- shiny::renderUI({

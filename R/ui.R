@@ -147,7 +147,8 @@ build_plot_viewer_panel <- function() {
           style = "padding: 0.1rem 0.5rem; font-size: 0.8rem;"
         )
       ),
-      bslib::card_body(fill = FALSE, padding = 0,
+      # style = "overflow-y: scroll;" to match bottom card width
+      bslib::card_body(fill = FALSE, padding = 0, style = "overflow-y: scroll;",
                        shiny::uiOutput("minimap_container"))
     ),
     bslib::card(
