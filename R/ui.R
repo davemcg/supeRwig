@@ -20,7 +20,7 @@ build_sidebar <- function(ctx) {
       "Junction Track (Wiggle View)",
       shiny::checkboxInput("show_junctions",
                            "Show per-sample junction track",
-                           value = FALSE),
+                           value = TRUE),
       shiny::numericInput("min_psi5",
                           "Min PSI5 % Cutoff (5' Donor):",
                           value = 1, min = 0.01, max = 100, step = 0.1),

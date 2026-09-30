@@ -1,3 +1,7 @@
+# 0.3.0
+
+Restructure code into fewer files. New default visualization as heatmap. Two functions 
+
 # 0.2.7
 Thicker lines, download functionality. Color Appris/Ensembl primary transcript in red. 
 
