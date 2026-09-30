@@ -14,11 +14,10 @@ build_ui <- function(ctx) {
 build_sidebar <- function(ctx) {
   meta_cols <- colnames(ctx$eiad_meta)
   
-  # Junction panel only appears when a junction SE was supplied.
-  # Junction panel updated for dual simultaneous filtering
+  # Junction panel only appears when a junction SE was supplied
   junction_panel <- if (!is.null(ctx$sj_se)) {
     bslib::accordion_panel(
-      "Junction Track",
+      "Junction Track (Wiggle View)",
       shiny::checkboxInput("show_junctions",
                            "Show per-sample junction track",
                            value = FALSE),
@@ -29,8 +28,8 @@ build_sidebar <- function(ctx) {
                           "Min PSI3 % Cutoff (3' Acceptor):",
                           value = 1, min = 0.01, max = 100, step = 0.1),
       shiny::helpText(
-        "Junctions appear as straight horizontal lines. Traces must pass ",
-        "both cutoffs to be displayed."
+        "Junctions appear as straight horizontal lines in Wiggle Track view. ",
+        "Traces must pass both cutoffs to be displayed."
       )
     )
   } else NULL
@@ -44,6 +43,15 @@ build_sidebar <- function(ctx) {
     shiny::textInput("target_region", "Search by Region:",
                      value = "chr1:93,992,834-94,121,148",
                      placeholder = "chr1:93,992,834-94,121,148"),
+    
+    # Primary Viewport Toggle: Heatmap (Default) vs Wiggle
+    shiny::radioButtons(
+      "plot_mode", "Display View:",
+      choices  = c("Coverage Heatmap" = "heatmap", "Wiggle Track" = "wiggle"),
+      selected = "heatmap",
+      inline   = TRUE
+    ),
+    
     shiny::hr(class = "my-2"),
     shiny::selectizeInput(
       "facet_group", "Facet / Group By:",
@@ -75,12 +83,13 @@ build_sidebar <- function(ctx) {
         ),
         bslib::accordion_panel(
           "Plot Settings",
+          shiny::checkboxInput("scale_rows_hm", "Min-Max Row Scaling (Heatmap)", value = TRUE),
           shiny::numericInput("min_expr", "Min log2(CPM+1) for gene:",
                               value = 5, min = 0, step = 0.5),
           shiny::numericInput("bin_size",
                               "Bin Size (base pairs) [0 = Auto]:",
                               value = 0, min = 0),
-          shiny::numericInput("overlap_factor", "Overlap Factor:",
+          shiny::numericInput("overlap_factor", "Overlap Factor (Wiggle):",
                               value = 1.2, step = 0.1),
           shiny::numericInput("plot_height",
                               "Plot Height (pixels) [0 = Auto]:",
@@ -102,14 +111,11 @@ build_sidebar <- function(ctx) {
           shiny::helpText(
             "Regions in the uploaded BED that overlap the current ",
             "window are drawn as vertical bands behind the wiggle ",
-            "traces. New uploads refresh automatically; color and ",
-            "opacity apply on next plot generation."
+            "traces."
           )
         )
       ),
-      # junction_panel goes next if present
       if (!is.null(junction_panel)) list(junction_panel) else list(),
-      # --- EXPORT ---
       list(
         bslib::accordion_panel(
           "Export Options",
@@ -154,7 +160,7 @@ build_plot_viewer_panel <- function() {
           style = "gap: 0.5rem;",
           shiny::div(
             style = "flex: 1; min-width: 0; text-align: left; display: flex; align-items: center; gap: 0.35rem;",
-            shiny::span(style = "white-space: nowrap; overflow: hidden; text-overflow: ellipsis;", "Coverage (cpm)"),
+            shiny::span(style = "white-space: nowrap; overflow: hidden; text-overflow: ellipsis;", "Coverage Profile"),
             bslib::tooltip(
               shiny::span(style = "cursor: pointer; font-size: 0.9rem; color: #6c757d;", "ℹ"),
               shiny::uiOutput("timing_info"),
@@ -177,7 +183,7 @@ build_plot_viewer_panel <- function() {
       ),
       bslib::card_body(
         fill = TRUE, padding = 0,
-        ggiraph::girafeOutput("bw_plot", width = "100%", height = "100%")
+        shiny::uiOutput("main_plot_viewport")
       )
     )
   )
