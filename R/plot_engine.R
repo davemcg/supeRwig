@@ -1,4 +1,4 @@
-#' Generate Interactive Region Plots (Coverage & Minimap) and Extract Data
+#' Generate Interactive Combined Region Plot (Coverage & Minimap) and Extract Data
 #'
 #' @param ctx Application context list returned by `build_context()`.
 #' @param chr Chromosome name (e.g., "chr1").
@@ -14,73 +14,56 @@
 #' @param min_psi5 Minimum 5' PSI threshold for junctions (0 to 1).
 #' @param min_psi3 Minimum 3' PSI threshold for junctions (0 to 1).
 #' @param overlap_factor Height scaling factor for overlapping wiggle tracks.
-#' @param mean_average Logical; if TRUE, calculates mean coverage and junction usage per facet group for the wiggle plot.
-#' @param output_file Base output filename. If specified, saves separate files as `*_coverage.html` and `*_minimap.html`.
-#' @param coverage_output_file Explicit path to save coverage plot HTML (overrides `output_file`).
-#' @param minimap_output_file Explicit path to save minimap HTML (overrides `output_file`).
+#' @param output_file Output HTML filename for the combined coverage and minimap plot.
 #' @param return_data Logical; if TRUE, includes underlying data.tables in return list.
 #'
-#' @return A named list containing `$coverage` (girafe widget), `$minimap` (girafe widget), 
+#' @return A named list containing `$plot` (combined girafe widget)
 #'   and optionally `$data` if `return_data = TRUE`.
 #' @export
-plot_region <- function(ctx,
+plot_wiggle <- function(ctx,
                         chr,
                         start,
                         end,
-                        facet_cols           = NULL,
-                        color_by             = NULL,
-                        target_gene          = NULL,
-                        max_samples          = 3,
-                        min_expr             = 5,
-                        bin_size             = 0,
-                        show_junctions       = TRUE,
-                        min_psi5             = 1,
-                        min_psi3             = 1,
-                        overlap_factor       = 1.2,
-                        mean_average         = FALSE,
-                        output_file          = NULL,
-                        coverage_output_file = NULL,
-                        minimap_output_file  = NULL,
-                        return_data          = FALSE) {
-  
-  # 1. Resolve File Paths if base output_file is provided
-  if (!is.null(output_file)) {
-    if (is.null(coverage_output_file)) {
-      coverage_output_file <- sub("(\\.[^.]*)?$", "_coverage.html", output_file)
-    }
-    if (is.null(minimap_output_file)) {
-      minimap_output_file <- sub("(\\.[^.]*)?$", "_minimap.html", output_file)
-    }
-  }
-  
-  # 2. Filter Metadata & CPM Filter
+                        facet_cols     = NULL,
+                        color_by       = NULL,
+                        target_gene    = NULL,
+                        max_samples    = 3,
+                        min_expr       = 5,
+                        bin_size       = 0,
+                        show_junctions = TRUE,
+                        min_psi5       = 1,
+                        min_psi3       = 1,
+                        overlap_factor = 1.2,
+                        output_file    = NULL,
+                        return_data    = FALSE) {
+
+  # 1. Filter Metadata & CPM Filter
   meta <- sanitize_metadata(downsample_by_study(ctx$eiad_meta, facet_cols, max_samples))
   samples <- cpm_filter_samples(meta$sample_accession, target_gene, ctx, min_expr)
   if (length(samples) == 0) stop("No samples passed expression cutoff.")
   meta <- meta[sample_accession %in% samples]
-  
-  # 3. Read BigWigs
+
+  # 2. Read BigWigs
   bp_wide <- end - start
   b_size  <- if (bin_size > 0) bin_size else as.integer(max(1, bp_wide / 750))
   n_bins  <- as.integer(max(1, ceiling(bp_wide / b_size)))
   bw_dt   <- read_region_bigwigs(samples, ctx$bw_file_map, chr, start, end, n_bins, ctx$bp_backend)
-  
-  # 4. Read Splice Junctions
+
+  # 3. Read Splice Junctions
   junc_band <- if (show_junctions && !is.null(ctx$sj_se)) 0.45 else 0
   raw_junc  <- if (junc_band > 0) {
     read_region_junctions(ctx, chr, start, end, samples, min_psi5 = min_psi5, min_psi3 = min_psi3)
   } else NULL
-  
-  # 5. Format Plotting Datasets
-  pd_res   <- build_plot_data(bw_dt, meta, facet_cols, overlap_factor, junc_band = junc_band, mean_average = mean_average)
+
+  # 4. Format Plotting Datasets
+  pd_res   <- build_plot_data(bw_dt, meta, facet_cols, overlap_factor, junc_band = junc_band)
   anno_res <- subset_region_annotation(ctx$anno_dt, chr, start, end)
-  
+
   junc_data <- if (!is.null(raw_junc) && nrow(raw_junc) > 0) {
-    attach_junction_positions(raw_junc, pd_res$unique_samples, junc_band = 0.45,
-                              mean_average = mean_average, meta = meta, facet_cols = facet_cols)
+    attach_junction_positions(raw_junc, pd_res$unique_samples, junc_band = 0.45)
   } else NULL
-  
-  # 6. Build ggplot Objects
+
+  # 5. Build ggplot Objects
   main_p <- build_main_plot(
     plot_data       = pd_res$plot_data,
     exon_highlights = anno_res$exon_highlights,
@@ -90,16 +73,16 @@ plot_region <- function(ctx,
     w_end           = end,
     overlap_factor  = overlap_factor,
     color_var       = color_by,
-    bed_highlights = data.table::data.table(
+    bed_highlights  = data.table::data.table(
       start = numeric(0), end = numeric(0))
   )
-  
+
   mm_res <- build_minimap(
     anno_res$region_anno, anno_res$tx_base, anno_res$tx_exons,
     anno_res$has_transcripts, chr, start, end
   )
-  
-  # 7. Calculate Independent Pixel Dimensions
+
+  # 6. Calculate Independent Pixel Dimensions
   dims <- compute_plot_dimensions(
     n_samples        = nrow(pd_res$unique_samples),
     n_facets         = length(unique(pd_res$unique_samples$combined_facet)),
@@ -108,12 +91,21 @@ plot_region <- function(ctx,
     minimap_override = NA,
     show_junctions   = (junc_band > 0)
   )
-  
-  # 8. Render Widget 1: Coverage Plot
-  coverage_widget <- ggiraph::girafe(
-    ggobj      = main_p,
+
+  # 7. Combine Coverage and Minimap Track Objects
+  combined_p <- patchwork::wrap_plots(
+    main_p,
+    mm_res$plot,
+    ncol = 1,
+    heights = c(dims$main_px, dims$minimap_px)
+  )
+
+  # 8. Render Unified Widget
+  total_height_px <- dims$main_px + dims$minimap_px
+  combined_widget <- ggiraph::girafe(
+    ggobj      = combined_p,
     width_svg  = 14,
-    height_svg = dims$main_px / 72,
+    height_svg = total_height_px / 72,
     options    = list(
       ggiraph::opts_sizing(rescale = TRUE, width = 1),
       ggiraph::opts_toolbar(saveaspng = FALSE, hidden = c("lasso_select", "lasso_deselect")),
@@ -128,34 +120,18 @@ plot_region <- function(ctx,
       ggiraph::opts_hover(css = "stroke-width: 4px; stroke: #FF6700;")
     )
   )
-  
-  # 9. Render Widget 2: Minimap Plot
-  minimap_widget <- ggiraph::girafe(
-    ggobj      = mm_res$plot,
-    width_svg  = 14,
-    height_svg = dims$minimap_px / 72,
-    options    = list(
-      ggiraph::opts_sizing(rescale = TRUE, width = 1),
-      ggiraph::opts_selection(type = "none")
-    )
-  )
-  
-  # 10. Save HTML Files Independently (if paths requested)
-  if (!is.null(coverage_output_file)) {
-    htmlwidgets::saveWidget(coverage_widget, file = coverage_output_file, selfcontained = TRUE)
-    message(sprintf("Coverage plot saved to: %s", coverage_output_file))
+
+  # 9. Save Single HTML File (if path requested)
+  if (!is.null(output_file)) {
+    htmlwidgets::saveWidget(combined_widget, file = output_file, selfcontained = TRUE)
+    message(sprintf("Wiggle plot saved to: %s", output_file))
   }
-  if (!is.null(minimap_output_file)) {
-    htmlwidgets::saveWidget(minimap_widget, file = minimap_output_file, selfcontained = TRUE)
-    message(sprintf("Minimap plot saved to: %s", minimap_output_file))
-  }
-  
-  # 11. Assemble Output Bundle
+
+  # 10. Assemble Output Bundle
   out <- list(
-    coverage = coverage_widget,
-    minimap  = minimap_widget
+    plot = combined_widget
   )
-  
+
   if (isTRUE(return_data)) {
     out$data <- list(
       coverage_data   = pd_res$plot_data,
@@ -166,7 +142,7 @@ plot_region <- function(ctx,
       coordinates     = list(chr = chr, start = start, end = end)
     )
   }
-  
+
   out
 }
 
@@ -186,7 +162,7 @@ build_main_plot <- function(plot_data,
                             color_var      = NULL) {
   lc <- resolve_line_colors(plot_data, color_var)
   plot_data <- lc$plot_data
-  
+
   p <- ggplot2::ggplot(plot_data) +
     ggplot2::geom_rect(data = exon_highlights, ggplot2::aes(xmin = start - 0.5, xmax = end + 0.5, ymin = -Inf, ymax = Inf), inherit.aes = FALSE, fill = "grey85", alpha = 0.5) +
     ggiraph::geom_rect_interactive(data = bed_highlights, ggplot2::aes(xmin = start - 0.5, xmax = end + 0.5, ymin = -Inf, ymax = Inf, tooltip = bed_tooltip, data_id = bed_tooltip), inherit.aes = FALSE, fill = bed_color %||% "#B22222", alpha = 1) +
@@ -198,7 +174,7 @@ build_main_plot <- function(plot_data,
     theme_panel_only() +
     ggplot2::labs(title = sprintf("Region: %s:%s-%s", chr, format(w_start, big.mark = ","), format(w_end, big.mark = ",")), x = "Genomic Position") +
     ggforce::facet_col(ggplot2::vars(combined_facet), scales = "free_y", space = "free", shrink = TRUE)
-  
+
   # ---- Optional junction layer ---------------------------------------------
   if (!is.null(junctions) && nrow(junctions) > 0) {
     pal <- junction_palette()
@@ -210,14 +186,14 @@ build_main_plot <- function(plot_data,
       ggplot2::guides(color = ggplot2::guide_legend(nrow = 1, override.aes = list(linewidth = 2))) +
       ggplot2::theme(legend.position = "bottom")
   }
-  
+
   p
 }
 
 #' Build the reactive graph that feeds the plot outputs
 #' @keywords internal
 build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
-  
+
   # ---- Gated snapshot ----------------------------------------------------
   gated_r <- shiny::eventReactive(rv$trigger, {
     shiny::req(rv$trigger > 0, rv$chr, rv$start, rv$end)
@@ -244,7 +220,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
       min_psi3        = as.numeric(input$min_psi3 %||% 0.0)
     )
   })
-  
+
   # ---- Gated nodes -------------------------------------------------------
   filtered_meta_r <- shiny::reactive({
     g <- gated_r()
@@ -261,7 +237,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     }
     sanitize_metadata(downsample_by_study(meta, g$facet_group, g$max_samples))
   })
-  
+
   cpm_samples_r <- shiny::reactive({
     g       <- gated_r()
     meta    <- filtered_meta_r()
@@ -270,7 +246,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     if (length(samples) == 0) stop("No samples passed expression cutoff.")
     list(meta = meta[sample_accession %in% samples], samples = samples)
   })
-  
+
   bigwig_r <- shiny::reactive({
     g  <- gated_r()
     cs <- cpm_samples_r()
@@ -286,15 +262,15 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     gated_r()$chr, gated_r()$start, gated_r()$end,
     gated_r()$bin_size
   )
-  
+
   junctions_raw_r <- shiny::reactive({
     g <- gated_r()
     if (!g$show_junctions) return(NULL)
-    cs <- cpm_samples_r()  
+    cs <- cpm_samples_r()
     read_region_junctions(ctx, g$chr, g$start, g$end,
-                          samples = cs$samples, 
+                          samples = cs$samples,
                           min_psi5 = g$min_psi5,
-                          min_psi3 = g$min_psi3) 
+                          min_psi3 = g$min_psi3)
   }) |> shiny::bindCache(
     gated_r()$show_junctions,
     cpm_samples_r()$samples,
@@ -302,12 +278,12 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     gated_r()$min_psi5,
     gated_r()$min_psi3
   )
-  
+
   annotation_r <- shiny::reactive({
     g <- gated_r()
     subset_region_annotation(ctx$anno_dt, g$chr, g$start, g$end)
   })
-  
+
   # ---- Live nodes --------------------------------------------------------
   bed_in_region_r <- shiny::reactive({
     g       <- gated_r()
@@ -320,21 +296,21 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
       bed_sub[seqnames == g$chr & start <= g$end & end >= g$start]
     )
   })
-  
+
   plot_data_r <- shiny::reactive({
     g  <- gated_r()
     cs <- cpm_samples_r()
     junc_band <- if (g$show_junctions) 0.45 else 0
-    
+
     t_bw <- Sys.time()
     bw   <- bigwig_r()
     timings_rv$bigwig <- as.numeric(Sys.time() - t_bw)
-    
+
     t_pd <- Sys.time()
     out_sample <- build_plot_data(bw, cs$meta, g$facet_group,
                                   input$overlap_factor, junc_band = junc_band,
                                   mean_average = FALSE)
-    
+
     out_wiggle <- if (g$mean_average) {
       build_plot_data(bw, cs$meta, g$facet_group,
                       input$overlap_factor, junc_band = junc_band,
@@ -342,11 +318,11 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     } else {
       out_sample
     }
-    
+
     timings_rv$plot_data <- as.numeric(Sys.time() - t_pd)
     list(sample_pd = out_sample, wiggle_pd = out_wiggle)
   })
-  
+
   junctions_positioned_r <- shiny::reactive({
     g <- gated_r()
     if (!g$show_junctions) return(NULL)
@@ -360,14 +336,14 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
                               meta = cs$meta,
                               facet_cols = g$facet_group)
   })
-  
+
   minimap_r <- shiny::reactive({
     g <- gated_r()
     a <- annotation_r()
     build_minimap(a$region_anno, a$tx_base, a$tx_exons, a$has_transcripts,
                   g$chr, g$start, g$end)
   })
-  
+
   dimensions_r <- shiny::reactive({
     pd <- plot_data_r()$wiggle_pd
     mm <- minimap_r()
@@ -380,7 +356,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
       gated_r()$show_junctions
     )
   })
-  
+
   heatmap_dimensions_r <- shiny::reactive({
     pd <- plot_data_r()$sample_pd
     compute_heatmap_dimensions(
@@ -388,7 +364,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
       length(unique(pd$unique_samples$combined_facet))
     )
   })
-  
+
   # Final bundle consumed by register_outputs
   shiny::reactive({
     g         <- gated_r()
@@ -399,9 +375,9 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     mm        <- minimap_r()
     dims      <- dimensions_r()
     color_var <- if (isTRUE(nzchar(input$color_by))) input$color_by else NULL
-    
+
     t_mp <- Sys.time()
-    
+
     # 1. Build Wiggle ggplot (uses wiggle_pd which respects mean_average)
     main_plot <- build_main_plot(
       plot_data       = pd$wiggle_pd$plot_data,
@@ -415,7 +391,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
       overlap_factor  = input$overlap_factor,
       color_var       = color_var
     )
-    
+
     # 2. Build heatmap ggplot (always uses sample_pd for individual sample rows)
     heatmap_plot <- build_heatmap_ggplot(
       plot_data  = pd$sample_pd$plot_data,
@@ -424,9 +400,9 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
       w_start    = g$start,
       w_end      = g$end
     )
-    
+
     timings_rv$main_plot <- as.numeric(Sys.time() - t_mp)
-    
+
     g_strand <- "+"
     if (!is.null(g$target_gene) && !is.null(ctx$anno_dt)) {
       df_sub <- ctx$anno_dt[type == "gene" & gene_name == g$target_gene, strand]
@@ -437,7 +413,7 @@ build_plot_reactive <- function(input, ctx, rv, bed_data, timings_rv) {
     } else {
       paste0(g$target_gene, " (5' → 3')")
     }
-    
+
     list(
       plot            = main_plot,
       heatmap_plot    = heatmap_plot,
@@ -483,11 +459,11 @@ build_minimap <- function(region_anno, tx_base, tx_exons, has_transcripts,
       tx_hover_info = data.table::data.table()
     ))
   }
-  
+
   tx_base[, draw_start := ifelse(strand == "-", end + 0.5, start - 0.5)]
   tx_base[, draw_end   := ifelse(strand == "-", start - 0.5, end + 0.5)]
   tx_base[, label_x    := pmax(w_start, pmin(start, end))]
-  
+
   p <- ggplot2::ggplot() +
     ggplot2::geom_segment(
       data = tx_base,
@@ -525,13 +501,13 @@ build_minimap <- function(region_anno, tx_base, tx_exons, has_transcripts,
     ggplot2::labs(x = NULL, y = NULL) +
     ggplot2::scale_color_manual(values = c("TRUE" = "firebrick3", "FALSE" = "gray25"), guide = "none") +
     ggplot2::scale_fill_manual(values = c("TRUE" = "firebrick1", "FALSE" = "grey25"), guide = "none")
-  
+
   meta_cols <- intersect(
-    c("tag", "transcript_type"), 
+    c("tag", "transcript_type"),
     colnames(tx_base)
   )
   target_cols <- c("tx_label", "seqnames", "start", "end", "strand", "tx_idx", meta_cols)
-  
+
   list(
     plot          = p,
     num_tx        = length(unique(region_anno$tx_idx)),
@@ -563,13 +539,13 @@ compute_plot_dimensions <- function(n_samples, n_facets, n_tx,
   junc_px    <- if (show_junctions) n_samples * 20 else 0
   main_px    <- (n_samples * 15) + (n_facets * 35) + 100 +
     legend_px + junc_px
-  
+
   minimap_px <- if (!is.na(minimap_override) && minimap_override > 0) {
     as.integer(minimap_override)
   } else {
     min(300L, (n_tx * 18) + 50)
   }
-  
+
   list(main_px = main_px, minimap_px = minimap_px)
 }
 
@@ -589,30 +565,30 @@ compute_heatmap_dimensions <- function(n_samples, n_facets) {
 subset_region_annotation <- function(anno_dt, chr, w_start, w_end) {
   region_anno <- anno_dt[seqnames == chr & start <= w_end & end >= w_start & type %in% c("transcript", "exon")]
   has_tx <- nrow(region_anno) > 0
-  
+
   if (has_tx) {
-    region_anno[, `:=`(tx_label = paste0(gene_name, " - ", transcript_id), 
+    region_anno[, `:=`(tx_label = paste0(gene_name, " - ", transcript_id),
                        tx_idx = as.numeric(as.factor(paste0(gene_name, " - ", transcript_id))))]
-    
+
     principal_ids <- character(0)
     if ("tag" %in% colnames(region_anno)) {
       principal_ids <- unique(region_anno[grepl("GENCODE_Primary|CCDS", tag), transcript_id])
     } else if ("appris" %in% colnames(region_anno)) {
       principal_ids <- unique(region_anno[grepl("appris_principal_1", appris), transcript_id])
-    } 
-    
+    }
+
     region_anno[, is_principal := transcript_id %in% principal_ids]
-    
+
     exon_hi <- data.table::as.data.table(GenomicRanges::reduce(GenomicRanges::makeGRangesFromDataFrame(region_anno[type == "exon"])))
   } else {
     exon_hi <- tx_base <- tx_exons <- data.table::data.table()
   }
-  
+
   list(
-    region_anno = region_anno, 
-    tx_base = region_anno[type == "transcript"], 
-    tx_exons = region_anno[type == "exon"], 
-    exon_highlights = exon_hi, 
+    region_anno = region_anno,
+    tx_base = region_anno[type == "transcript"],
+    tx_exons = region_anno[type == "exon"],
+    exon_highlights = exon_hi,
     has_transcripts = has_tx
   )
 }
@@ -631,24 +607,24 @@ subset_region_annotation <- function(anno_dt, chr, w_start, w_end) {
 #' @keywords internal
 build_plot_data <- function(dt_full, meta_cur, facet_cols, overlap_factor, junc_band = 0, tooltip_max_chars = 120, mean_average = FALSE) {
   if (length(facet_cols) == 0) { meta_cur$dummy_facet <- "All Samples"; facet_cols <- "dummy_facet" }
-  
+
   meta_work <- data.table::copy(meta_cur)
   tissue_map <- unique(meta_work)[!duplicated(sample_accession)]
   tissue_map[, combined_facet := do.call(paste, c(.SD, sep = " - ")),
              .SDcols = facet_cols]
-  
+
   if (isTRUE(mean_average)) {
     pd_raw <- merge(dt_full, tissue_map, by.x = "sample", by.y = "sample_accession", all.x = TRUE)
-    
+
     pd <- pd_raw[, .(
       value     = mean(value, na.rm = TRUE),
       n_samples = data.table::uniqueN(sample)
     ), by = .(combined_facet, binned_pos, bin_end)]
-    
+
     facet_meta <- tissue_map[, .(
       n_samples_total = .N
     ), by = combined_facet]
-    
+
     safe_cols <- .tooltip_safe_cols(tissue_map, tooltip_max_chars)
     for (col in safe_cols) {
       if (col %in% colnames(tissue_map)) {
@@ -659,7 +635,7 @@ build_plot_data <- function(dt_full, meta_cur, facet_cols, overlap_factor, junc_
         facet_meta <- merge(facet_meta, val_dt, by = "combined_facet", all.x = TRUE)
       }
     }
-    
+
     tips <- paste0("<b>Group / Facet:</b> ", facet_meta$combined_facet,
                    "<br><b>Samples:</b> ", facet_meta$n_samples_total)
     for (col in setdiff(safe_cols, c("combined_facet", "dummy_facet"))) {
@@ -670,19 +646,19 @@ build_plot_data <- function(dt_full, meta_cur, facet_cols, overlap_factor, junc_
     }
     facet_meta[, static_tooltip := tips]
     facet_meta[, sample := combined_facet]
-    
+
     pd <- merge(pd, facet_meta, by = "combined_facet", all.x = TRUE)
-    
+
     unique_samples <- unique(pd[, .(sample, combined_facet)])[order(combined_facet, sample)][, local_idx := seq_len(.N), by = combined_facet]
     pd <- merge(pd, unique_samples, by = c("sample", "combined_facet"))
-    
+
     pd[, `:=`(log_val = log2(value + 1), plot_x = (binned_pos + bin_end) / 2)]
     max_log <- max(pd$log_val, na.rm = TRUE); if (max_log == 0 || is.na(max_log)) max_log <- 1
-    
+
     pd[, offset_y := (log_val / max_log) * overlap_factor + local_idx + junc_band]
     pd[, tooltip_text := paste0(static_tooltip, "<br><b>Mean Coverage:</b> ", round(value, 2))]
     data.table::setorderv(pd, c("combined_facet", "local_idx", "plot_x"))
-    
+
     list(plot_data = pd, unique_samples = unique_samples)
   } else {
     tips <- paste0("<b>Sample:</b> ", tissue_map$sample_accession)
@@ -693,18 +669,18 @@ build_plot_data <- function(dt_full, meta_cur, facet_cols, overlap_factor, junc_
       tips <- paste0(tips, "<br><b>", col, ":</b> ", s)
     }
     tissue_map[, static_tooltip := tips]
-    
+
     pd <- merge(dt_full, tissue_map, by.x = "sample", by.y = "sample_accession", all.x = TRUE)
     unique_samples <- unique(pd[, .(sample, combined_facet)])[order(combined_facet, sample)][, local_idx := seq_len(.N), by = combined_facet]
-    
+
     pd <- merge(pd, unique_samples, by = c("sample", "combined_facet"))
     pd[, `:=`(log_val = log2(value + 1), plot_x = (binned_pos + bin_end) / 2)]
     max_log <- max(pd$log_val, na.rm = TRUE); if (max_log == 0 || is.na(max_log)) max_log <- 1
-    
+
     pd[, offset_y := (log_val / max_log) * overlap_factor + local_idx + junc_band]
     pd[, tooltip_text := paste0(static_tooltip, ": ", round(value, 2))]
     data.table::setorderv(pd, c("combined_facet", "local_idx", "plot_x"))
-    
+
     list(plot_data = pd, unique_samples = unique_samples)
   }
 }
@@ -752,47 +728,47 @@ attach_junction_positions <- function(junctions, unique_samples,
                                       meta = NULL,
                                       facet_cols = NULL) {
   if (nrow(junctions) == 0) return(junctions)
-  
+
   if (isTRUE(mean_average) && !is.null(meta)) {
     s_map <- unique(meta)[!duplicated(sample_accession)]
     if (length(facet_cols) == 0) { s_map$dummy_facet <- "All Samples"; facet_cols <- "dummy_facet" }
     s_map[, combined_facet := do.call(paste, c(.SD, sep = " - ")), .SDcols = facet_cols]
-    
+
     junc_mapped <- merge(junctions, s_map[, .(sample_accession, combined_facet)],
                          by.x = "sample", by.y = "sample_accession")
     if (nrow(junc_mapped) == 0) return(junctions[0])
-    
+
     extra_cols <- intersect(c("cluster_5", "cluster_3"), colnames(junc_mapped))
     by_cols <- c("combined_facet", "jid", "start", "end", "strand", "annot", "strand_annot", extra_cols)
-    
+
     junc_avg <- junc_mapped[, .(
       psi5      = mean(psi5, na.rm = TRUE),
       psi3      = mean(psi3, na.rm = TRUE),
       raw_count = if (all(is.na(raw_count))) NA_real_ else mean(raw_count, na.rm = TRUE),
       n_samples = .N
     ), by = by_cols]
-    
+
     junc_avg[, count := pmax(psi5, psi3)]
     junc_avg[, sample := combined_facet]
-    
+
     junc <- merge(junc_avg, unique_samples, by = c("sample", "combined_facet"))
   } else {
     junc <- merge(junctions, unique_samples, by = "sample")
   }
-  
+
   if (nrow(junc) == 0) return(junc)
-  
+
   pack_lanes <- function(start_vec, end_vec) {
     if (length(start_vec) == 0) return(integer(0))
-    
+
     ord <- order(start_vec)
     s_sorted <- start_vec[ord]
     e_sorted <- end_vec[ord]
-    
+
     lane_ends <- numeric(0)
     assigned_lanes <- integer(length(start_vec))
-    buffer <- 200L 
-    
+    buffer <- 200L
+
     for (i in seq_along(s_sorted)) {
       placed <- FALSE
       for (l in seq_along(lane_ends)) {
@@ -810,16 +786,16 @@ attach_junction_positions <- function(junctions, unique_samples,
     }
     return(assigned_lanes)
   }
-  
+
   junc[, sub_idx := pack_lanes(start, end), by = .(combined_facet, local_idx)]
-  
+
   sub_spacing <- 0.060
   n_visible   <- max(1L, as.integer(floor((junc_band - 0.08) / sub_spacing)))
   junc[, sub_idx := sub_idx %% n_visible]
-  
+
   junc[, junc_y  := local_idx + junc_band - 0.07 - (sub_idx * sub_spacing)]
   junc[, junc_lw := 0.8]
-  
+
   if (isTRUE(mean_average)) {
     junc[, junc_tooltip := paste0(
       "<b>Junction:</b> ", jid,
@@ -839,24 +815,24 @@ attach_junction_positions <- function(junctions, unique_samples,
       "<br><b>PSI3 (3' Acceptor Focus):</b> ", round(psi3, 2), "%"
     )]
     if ("raw_count" %in% colnames(junc)) {
-      junc[, junc_tooltip := paste0(junc_tooltip, "<br><b>Raw Count:</b> ", 
+      junc[, junc_tooltip := paste0(junc_tooltip, "<br><b>Raw Count:</b> ",
                                     data.table::fifelse(is.na(raw_count), "N/A", as.character(raw_count)))]
     }
   }
-  
+
   if ("cluster_5" %in% colnames(junc)) {
     junc[, junc_tooltip := paste0(junc_tooltip, "<br><b>5' Cluster (Donor):</b> ", cluster_5)]
-  } 
+  }
   if ("cluster_3" %in% colnames(junc)) {
     junc[, junc_tooltip := paste0(junc_tooltip, "<br><b>3' Cluster (Acceptor):</b> ", cluster_3)]
-  } 
-  
+  }
+
   junc[, junc_tooltip := paste0(
     junc_tooltip,
     "<br><b>Strand:</b> ",  strand,
     "<br><b>Status:</b> ",  ifelse(annot == 1L, "annotated", "novel")
   )]
-  
+
   junc
 }
 
@@ -880,37 +856,37 @@ plot_region_heatmap <- function(ctx,
                                 show_column_axis = TRUE,
                                 title            = NULL,
                                 return_data      = FALSE) {
-  
+
   if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
     stop("Package 'ComplexHeatmap' is required for heatmap visualization.")
   }
   if (!requireNamespace("circlize", quietly = TRUE)) {
     stop("Package 'circlize' is required for heatmap color mapping.")
   }
-  
+
   # 1. Filter Metadata & CPM Filter
   meta <- sanitize_metadata(downsample_by_study(ctx$eiad_meta, facet_cols, max_samples))
   samples <- cpm_filter_samples(meta$sample_accession, target_gene, ctx, min_expr)
   if (length(samples) == 0) stop("No samples passed expression cutoff.")
   meta <- meta[sample_accession %in% samples]
-  
+
   # 2. Read BigWigs
   bp_wide <- end - start
   b_size  <- if (bin_size > 0) bin_size else as.integer(max(1, bp_wide / 750))
   n_bins  <- as.integer(max(1, ceiling(bp_wide / b_size)))
   bw_dt   <- read_region_bigwigs(samples, ctx$bw_file_map, chr, start, end, n_bins, ctx$bp_backend)
-  
+
   # 3. Handle Faceting & Metadata Alignment
   if (is.null(facet_cols) || length(facet_cols) == 0) {
     meta$dummy_facet <- "All Samples"
     facet_cols <- "dummy_facet"
   }
-  
+
   meta_unique <- unique(meta)[!duplicated(sample_accession)]
   meta_unique[, combined_facet := do.call(paste, c(.SD, sep = " - ")), .SDcols = facet_cols]
-  
+
   dt_merged <- merge(bw_dt, meta_unique, by.x = "sample", by.y = "sample_accession", all.x = TRUE)
-  
+
   # 4. Reshape to Wide Matrix (Always Sample-Level)
   mat_dt <- data.table::dcast(
     dt_merged,
@@ -924,12 +900,12 @@ plot_region_heatmap <- function(ctx,
   rownames(mat) <- mat_samples
   sample_meta <- meta_unique[match(rownames(mat), sample_accession)]
   row_split   <- sample_meta$combined_facet
-  
+
   # Reorder columns numerically by genomic start position
   col_positions <- as.numeric(colnames(mat))
   col_ord <- order(col_positions)
   mat <- mat[, col_ord, drop = FALSE]
-  
+
   # 5. min max row scaling
   if (isTRUE(scale_rows)) {
     row_mins <- apply(mat, 1, min, na.rm = TRUE)
@@ -938,30 +914,30 @@ plot_region_heatmap <- function(ctx,
     row_range[row_range == 0 | is.na(row_range)] <- 1
     mat <- (mat - row_mins) / row_range
   }
-  
+
   # 6. Color Mapping
   magma_colors <- magma_palette(100)
-  
+
   min_val <- min(mat, na.rm = TRUE)
   max_val <- max(mat, na.rm = TRUE)
   if (min_val == max_val) max_val <- min_val + 1
   breaks <- seq(min_val, max_val, length.out = 100)
   col_fun <- circlize::colorRamp2(breaks, magma_colors)
-  
+
   # 8. Subset Region Annotation & Build Aligned Transcripts Annotation
   anno_res <- subset_region_annotation(ctx$anno_dt, chr, start, end)
-  
+
   top_anno <- if (isTRUE(show_transcripts)) {
     build_aligned_transcript_annotation(anno_res, start, end)
   } else NULL
-  
+
   bottom_anno <- if (isTRUE(show_column_axis)) {
     build_coordinate_axis_annotation(start, end)
   } else NULL
-  
+
   legend_label <- "Min Max"
   plot_title <- title %||% sprintf("Region: %s:%s-%s", chr, format(start, big.mark = ","), format(end, big.mark = ","))
-  
+
   # 9. Build ComplexHeatmap Object
   ht <- ComplexHeatmap::Heatmap(
     matrix               = mat,
@@ -983,7 +959,7 @@ plot_region_heatmap <- function(ctx,
     raster_resize_mat    = FALSE,
     raster_quality       = 5
   )
-  
+
   if (isTRUE(return_data)) {
     return(list(
       heatmap         = ht,
@@ -993,7 +969,7 @@ plot_region_heatmap <- function(ctx,
       coordinates     = list(chr = chr, start = start, end = end)
     ))
   }
-  
+
   ht
 }
 
@@ -1001,7 +977,7 @@ plot_region_heatmap <- function(ctx,
 #' @keywords internal
 build_heatmap_ggplot <- function(plot_data, scale_rows, chr, w_start, w_end, title = NULL) {
   pd <- data.table::copy(plot_data)
-  
+
   if (isTRUE(scale_rows)) {
     pd[, fill_val := {
       lo  <- min(value, na.rm = TRUE)
@@ -1014,19 +990,19 @@ build_heatmap_ggplot <- function(plot_data, scale_rows, chr, w_start, w_end, tit
     pd[, fill_val := value]
     legend_label <- "Coverage"
   }
-  
+
   pd[, combined_facet := factor(
     combined_facet,
     levels = sort(unique(as.character(combined_facet)))
   )]
-  
+
   sample_rows <- unique(pd[, .(sample, combined_facet, local_idx, static_tooltip)])
-  
+
   plot_title <- title %||% sprintf(
     "Region: %s:%s-%s", chr,
     format(w_start, big.mark = ","), format(w_end, big.mark = ",")
   )
-  
+
   ggplot2::ggplot(pd, ggplot2::aes(x = plot_x, y = local_idx)) +
     ggplot2::geom_raster(ggplot2::aes(fill = fill_val), interpolate = FALSE) +
     ggiraph::geom_rect_interactive(
@@ -1062,10 +1038,6 @@ build_heatmap_ggplot <- function(plot_data, scale_rows, chr, w_start, w_end, tit
     )
 }
 
-
-#' @export
-plot_heatmap_region <- plot_region_heatmap
-
 #' Build Aligned Transcript Column Annotation for ComplexHeatmap
 #' @keywords internal
 build_aligned_transcript_annotation <- function(anno_res, w_start, w_end) {
@@ -1082,21 +1054,21 @@ build_aligned_transcript_annotation <- function(anno_res, w_start, w_end) {
       show_annotation_name = FALSE
     ))
   }
-  
+
   tx_base   <- anno_res$tx_base
   tx_exons  <- anno_res$tx_exons
   num_tx    <- length(unique(anno_res$region_anno$tx_idx))
   height_cm <- min(6.0, max(1.2, num_tx * 0.45 + 0.3))
-  
+
   anno_fn <- ComplexHeatmap::AnnotationFunction(
     fun = function(index, k, n) {
       w_span <- w_end - w_start
       if (w_span <= 0) return(NULL)
-      
+
       for (i in seq_len(num_tx)) {
         y_center <- 1 - (i - 0.5) / num_tx
         box_h    <- 0.45 / num_tx
-        
+
         curr_tx <- tx_base[tx_base$tx_idx == i, ]
         if (nrow(curr_tx) > 0) {
           t_start  <- curr_tx$start[1]
@@ -1104,18 +1076,18 @@ build_aligned_transcript_annotation <- function(anno_res, w_start, w_end) {
           t_strand <- curr_tx$strand[1]
           t_label  <- curr_tx$tx_label[1]
           is_princ <- isTRUE(curr_tx$is_principal[1])
-          
+
           x1_npc <- pmax(0, pmin(1, (t_start - w_start) / w_span))
           x2_npc <- pmax(0, pmin(1, (t_end - w_start) / w_span))
-          
+
           line_col <- if (is_princ) "firebrick3" else "grey35"
-          
+
           grid::grid.lines(
             x = grid::unit(c(x1_npc, x2_npc), "npc"),
             y = grid::unit(c(y_center, y_center), "npc"),
             gp = grid::gpar(col = line_col, lwd = 1.5)
           )
-          
+
           if ((x2_npc - x1_npc) > 0.05) {
             n_arrows  <- max(2, min(5, floor((x2_npc - x1_npc) * 8)))
             arrow_pos <- seq(x1_npc + 0.02, x2_npc - 0.02, length.out = n_arrows)
@@ -1129,7 +1101,7 @@ build_aligned_transcript_annotation <- function(anno_res, w_start, w_end) {
               )
             }
           }
-          
+
           grid::grid.text(
             label = t_label,
             x = grid::unit(pmax(0.005, x1_npc), "npc"),
@@ -1138,22 +1110,22 @@ build_aligned_transcript_annotation <- function(anno_res, w_start, w_end) {
             gp = grid::gpar(fontsize = 7, col = "grey20", fontface = if (is_princ) "bold" else "plain")
           )
         }
-        
+
         curr_exons <- tx_exons[tx_exons$tx_idx == i, ]
         if (nrow(curr_exons) > 0) {
           for (j in seq_len(nrow(curr_exons))) {
             ex_s <- curr_exons$start[j]
             ex_e <- curr_exons$end[j]
             is_princ <- isTRUE(curr_exons$is_principal[j])
-            
+
             ex_x1 <- pmax(0, pmin(1, (ex_s - w_start) / w_span))
             ex_x2 <- pmax(0, pmin(1, (ex_e - w_start) / w_span))
             ex_w  <- ex_x2 - ex_x1
-            
+
             if (ex_w > 0) {
               fill_c   <- if (is_princ) "firebrick1" else "grey35"
               border_c <- if (is_princ) "firebrick4" else "grey15"
-              
+
               grid::grid.rect(
                 x = grid::unit(ex_x1, "npc"),
                 y = grid::unit(y_center, "npc"),
@@ -1169,7 +1141,7 @@ build_aligned_transcript_annotation <- function(anno_res, w_start, w_end) {
     },
     height = grid::unit(height_cm, "cm")
   )
-  
+
   ComplexHeatmap::HeatmapAnnotation(
     transcripts = anno_fn,
     show_annotation_name = FALSE
@@ -1185,7 +1157,7 @@ build_coordinate_axis_annotation <- function(w_start, w_end) {
       ticks  <- unique(round(ticks))
       at_npc <- (ticks - w_start) / (w_end - w_start)
       labels <- format(ticks, big.mark = ",", scientific = FALSE)
-      
+
       grid::grid.xaxis(
         at = at_npc,
         label = labels,
@@ -1194,7 +1166,7 @@ build_coordinate_axis_annotation <- function(w_start, w_end) {
     },
     height = grid::unit(0.7, "cm")
   )
-  
+
   ComplexHeatmap::HeatmapAnnotation(
     genomic_position = anno_axis,
     show_annotation_name = FALSE
