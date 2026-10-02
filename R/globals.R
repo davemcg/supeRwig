@@ -21,7 +21,9 @@ utils::globalVariables(c(
   ".SD", ".N", ".I", "is_principal", "fill_val",
   # junction-layer additions
   "jid", "annot", "count", "strand_annot",
-  "sub_idx", "junc_y", "junc_lw", "junc_tooltip", "row_idx"
+  "sub_idx", "junc_y", "junc_lw", "junc_tooltip", "row_idx",
+  # mean-averaging additions
+  "n_samples", "n_samples_total", "col_val"
 ))
 
 
@@ -48,7 +50,6 @@ format_ucsc_region <- function(chr, start, end) {
 
 
 #' Shared plot theme
-#'
 #' @keywords internal
 theme_panel_only <- function() {
   cowplot::theme_minimal_vgrid() +
@@ -62,10 +63,6 @@ theme_panel_only <- function() {
 }
 
 #' Categorical palette for arbitrary numbers of levels
-#'
-#' Concatenates several `pals` palettes to handle large categorical
-#' variables (study_accession etc.) without recycling.
-#'
 #' @keywords internal
 cat_palette <- function(levels) {
   n <- length(levels)

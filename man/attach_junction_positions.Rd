@@ -4,7 +4,14 @@
 \alias{attach_junction_positions}
 \title{Attach y-positions and visual attrs to junctions with Interval Packing}
 \usage{
-attach_junction_positions(junctions, unique_samples, junc_band = 0.65)
+attach_junction_positions(
+  junctions,
+  unique_samples,
+  junc_band = 0.65,
+  mean_average = FALSE,
+  meta = NULL,
+  facet_cols = NULL
+)
 }
 \description{
 Attach y-positions and visual attrs to junctions with Interval Packing

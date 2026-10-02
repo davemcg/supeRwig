@@ -23,46 +23,6 @@ plot_region_heatmap(
   return_data = FALSE
 )
 }
-\arguments{
-\item{ctx}{Application context list returned by \code{build_context()}.}
-
-\item{chr}{Chromosome name (e.g., "chr1").}
-
-\item{start}{Genomic start coordinate.}
-
-\item{end}{Genomic end coordinate.}
-
-\item{facet_cols}{Character vector of metadata columns to group/facet rows by.}
-
-\item{target_gene}{Optional gene symbol used for CPM filtering.}
-
-\item{max_samples}{Maximum samples per facet group (0 for unlimited).}
-
-\item{min_expr}{Minimum log2(CPM+1) threshold for sample filtering.}
-
-\item{bin_size}{Bin resolution in base pairs (0 for auto-calculation).}
-
-\item{scale_rows}{Logical or character; whether/how to scale coverage per sample row across genomic bins.
-Options: \code{FALSE} or \code{"none"} (no scaling), \code{TRUE} \code{"minmax"} (0-1 min-max scaling). Default: FALSE.}
-
-\item{palette}{Color scheme for coverage values (default: "magma").}
-
-\item{show_transcripts}{Logical; whether to render aligned transcript models over the heatmap (default: TRUE).}
-
-\item{show_row_names}{Logical; whether to display sample names on rows (default: FALSE).}
-
-\item{show_column_axis}{Logical; whether to draw genomic coordinate axis at bottom (default: TRUE).}
-
-\item{title}{Optional plot title.}
-
-\item{return_data}{Logical; if TRUE, returns a list containing the Heatmap object, matrix, and metadata.}
-}
-\value{
-A \code{ComplexHeatmap::Heatmap} object (or list if \code{return_data = TRUE}).
-}
 \description{
-Creates a coverage heatmap using \code{ComplexHeatmap} where rows are samples
-(split by \code{combined_facet}), columns are binned genomic coordinates,
-color represents read coverage using the viridis (magma) color scheme, and
-aligned transcript models are rendered as a top column annotation layer.
+Generate Heatmap Visualization of Read Coverage with Aligned Transcripts
 }

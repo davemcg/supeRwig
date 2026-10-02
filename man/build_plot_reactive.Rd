@@ -7,9 +7,6 @@
 build_plot_reactive(input, ctx, rv, bed_data, timings_rv)
 }
 \description{
-Returns a single reactive of the bundle that \code{register_outputs} expects.
-The graph is split into "gated" nodes (re-evaluated only when the user
-clicks Generate Plot or hits Reset Zoom) and "live" nodes (re-evaluated
-whenever a cosmetic input changes, including the brush-driven view).
+Build the reactive graph that feeds the plot outputs
 }
 \keyword{internal}

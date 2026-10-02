@@ -7,7 +7,6 @@
 cat_palette(levels)
 }
 \description{
-Concatenates several \code{pals} palettes to handle large categorical
-variables (study_accession etc.) without recycling.
+Categorical palette for arbitrary numbers of levels
 }
 \keyword{internal}

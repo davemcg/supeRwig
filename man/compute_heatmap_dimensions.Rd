@@ -7,8 +7,6 @@
 compute_heatmap_dimensions(n_samples, n_facets)
 }
 \description{
-Rows are single raster bands (no amplitude to accommodate, unlike the
-wiggle), so per-sample height is much smaller. No junction term: the
-heatmap doesn't draw a junction track.
+Pixel height for the raster heatmap
 }
 \keyword{internal}

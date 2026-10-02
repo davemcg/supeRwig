@@ -19,6 +19,7 @@ plot_region(
   min_psi5 = 1,
   min_psi3 = 1,
   overlap_factor = 1.2,
+  mean_average = FALSE,
   output_file = NULL,
   coverage_output_file = NULL,
   minimap_output_file = NULL,
@@ -53,6 +54,8 @@ plot_region(
 \item{min_psi3}{Minimum 3' PSI threshold for junctions (0 to 1).}
 
 \item{overlap_factor}{Height scaling factor for overlapping wiggle tracks.}
+
+\item{mean_average}{Logical; if TRUE, calculates mean coverage and junction usage per facet group for the wiggle plot.}
 
 \item{output_file}{Base output filename. If specified, saves separate files as \verb{*_coverage.html} and \verb{*_minimap.html}.}
 

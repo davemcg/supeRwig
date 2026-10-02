@@ -61,6 +61,15 @@ build_sidebar <- function(ctx) {
                            meta_cols),
       multiple = TRUE
     ),
+    # Only show mean-average option when Wiggle Track view is selected
+    shiny::conditionalPanel(
+      condition = "input.plot_mode == 'wiggle'",
+      shiny::checkboxInput(
+        "mean_average",
+        "Mean-average profile by facet",
+        value = TRUE
+      )
+    ),
     shiny::selectizeInput(
       "color_by", "Color Wiggle Lines By (optional):",
       choices  = c("None" = "", meta_cols),
@@ -147,7 +156,6 @@ build_plot_viewer_panel <- function() {
           style = "padding: 0.1rem 0.5rem; font-size: 0.8rem;"
         )
       ),
-      # style = "overflow-y: scroll;" to match bottom card width
       bslib::card_body(fill = FALSE, padding = 0, style = "overflow-y: scroll;",
                        shiny::uiOutput("minimap_container"))
     ),

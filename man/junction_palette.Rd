@@ -7,6 +7,6 @@
 junction_palette()
 }
 \description{
-Saturated = annotated, pale = novel. Blue = +, red = -, grey = \code{*}.
+Strand x annotation color palette for the junction layer
 }
 \keyword{internal}
